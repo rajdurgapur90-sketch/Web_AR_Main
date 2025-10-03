@@ -3,29 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gesture Controlled 3D Game</title>
+    <title>Gesture Controlled 3D Viewer</title>
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Load Three.js (Core) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <!-- Load GLTFLoader -->
+    <!-- Load GLTFLoader for 3D models -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <!-- MediaPipe Tasks Vision Library -->
+    <!-- MediaPipe Tasks Vision Library for hand tracking -->
     <script type="module" src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/vision_bundle.js"></script>
     <style>
+        /* Basic setup */
         body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; background-color: #0d0d1a; }
-        canvas { display: block; width: 100%; height: 100vh; }
-        #three-container canvas { cursor: grab; }
-        #hand-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; pointer-events: none; z-index: 50; }
+        canvas { display: block; width: 100vw; height: 100vh; }
         
-        #fab-container { 
+        /* The canvas for the 3D scene */
+        #three-container canvas { cursor: grab; }
+
+        /* Overlay canvas for drawing hand landmarks */
+        #hand-overlay { position: fixed; top: 0; left: 0; pointer-events: none; z-index: 50; }
+        
+        /* Main FAB container at the bottom-right */
+        #fab-container {
             position: fixed; 
             bottom: 2rem;
             right: 2rem;
-            z-index: 100; 
+            z-index: 100;
         }
 
-        #sub-fab-container {
+        /* Overlay for sub-buttons, centered and hidden by default */
+        #sub-fab-overlay {
             position: fixed;
             top: 50%;
             left: 50%;
@@ -34,14 +41,16 @@
             pointer-events: none;
             opacity: 0;
             visibility: hidden;
-            transition: opacity 0.4s ease, visibility 0.4s ease;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+            height: 60px; /* Container height */
         }
-        #sub-fab-container.visible {
+        #sub-fab-overlay.visible {
             opacity: 1;
             visibility: visible;
             pointer-events: auto;
         }
 
+        /* General style for all FABs */
         .fab-button {
             width: 55px; height: 55px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
@@ -50,57 +59,72 @@
         }
         .fab-button:active { transform: scale(0.95); filter: brightness(85%); }
         #main-fab svg { transition: transform 0.3s ease-in-out; }
-        #main-fab { position: relative; z-index: 10; }
+        #main-fab { z-index: 10; } 
 
+        /* Sub-button initial state (hidden and scaled down) */
         .sub-fab {
+            opacity: 0;
+            visibility: hidden;
+            transform: scale(0.5); 
+            transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
             position: absolute;
             top: 50%;
             left: 50%;
             margin-top: -27.5px;
             margin-left: -27.5px;
-            opacity: 0;
-            visibility: hidden;
-            transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-            transform: scale(0.5); 
-            z-index: 5;
         }
 
+        /* Highlight effect for gesture selection */
         .gesture-highlight { 
-            box-shadow: 0 0 20px 5px #fde047;
+            box-shadow: 0 0 25px 8px #fde047; /* Brighter, larger glow */
         }
+        
+        /* New styles for locked buttons */
+        .soft-locked { background-color: #ef4444 !important; } /* Red-500 */
+        .hard-locked { background-color: #4b5563 !important; } /* Gray-600 */
 
+
+        /* Labels for sub-buttons */
         .fab-label {
             position: absolute;
+            top: -10px; /* Position label above the button */
             left: 50%;
-            transform: translateX(-50%) translateY(5px);
-            top: 100%;
-            margin-top: 8px;
+            transform: translate(-50%, -100%);
             padding: 6px 12px;
             background-color: rgba(17, 24, 39, 0.95); color: white; border-radius: 5px;
             font-size: 14px; white-space: nowrap; opacity: 0;
             transition: opacity 0.3s ease, transform 0.3s ease;
             pointer-events: none; visibility: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
+        
+        /* Show label on hover or when highlighted by gesture */
         .sub-fab:hover .fab-label,
         .sub-fab.gesture-highlight .fab-label { 
             opacity: 1; 
-            transform: translateX(-50%) translateY(0);
+            transform: translate(-50%, -120%); /* Animate upwards */
             visibility: visible; 
         }
 
-        #fab-container.open #main-fab #fab-icon-unlocked { transform: rotate(135deg); }
+        /* --- Animation for opening the FAB menu --- */
+        #sub-fab-overlay.visible .sub-fab { 
+            opacity: 1; 
+            visibility: visible; 
+            transform: scale(1); /* Bring to full size */
+        }
         
-        #sub-fab-container.visible .sub-fab { opacity: 1; visibility: visible; }
-        
-        #sub-fab-container.visible #sub-1 { transform: translateX(-175px) scale(1); } /* Camera */
-        #sub-fab-container.visible #sub-9 { transform: translateX(-105px) scale(1); } /* Upload */
-        #sub-fab-container.visible #sub-5 { transform: translateX(-35px) scale(1); }  /* Animation */
-        #sub-fab-container.visible #sub-4 { transform: translateX(35px) scale(1); }  /* Auto-Rotate */
-        #sub-fab-container.visible #sub-8 { transform: translateX(105px) scale(1); }   /* Lock */
-        #sub-fab-container.visible #sub-6 { transform: translateX(175px) scale(1); }   /* Reset */
-        #sub-fab-container.visible #sub-7 { transform: translateX(245px) scale(1); }  /* Guide */
+        /* Position 9 sub-buttons horizontally in the center when menu is open */
+        #sub-fab-overlay.visible #sub-1 { transform: translateX(-280px) scale(1); } /* Camera */
+        #sub-fab-overlay.visible #sub-2 { transform: translateX(-210px) scale(1); } /* Upload */
+        #sub-fab-overlay.visible #sub-3 { transform: translateX(-140px) scale(1); } /* Animation */
+        #sub-fab-overlay.visible #sub-4 { transform: translateX(-70px) scale(1); }  /* Auto-Rotate */
+        #sub-fab-overlay.visible #sub-5 { transform: translateX(0px) scale(1); }    /* Annotate */
+        #sub-fab-overlay.visible #sub-6 { transform: translateX(70px) scale(1); }   /* Reset */
+        #sub-fab-overlay.visible #sub-7 { transform: translateX(140px) scale(1); }  /* Guide */
+        #sub-fab-overlay.visible #sub-8 { transform: translateX(210px) scale(1); }  /* Soft Lock */
+        #sub-fab-overlay.visible #sub-9 { transform: translateX(280px) scale(1); }  /* Hard Lock */
 
 
+        /* --- Guide Modal Styling --- */
         #guide-modal {
             position: fixed;
             top: 50%;
@@ -121,61 +145,131 @@
             color: #e5e7eb;
             font-size: 15.2px; 
         }
-        #guide-modal.visible {
-            opacity: 1;
-            visibility: visible;
-        }
+        #guide-modal.visible { opacity: 1; visibility: visible; }
         #guide-modal h2 {
-            text-align: center;
-            font-size: 1.5em; 
-            font-weight: bold;
+            text-align: center; font-size: 1.5em; font-weight: bold; color: white; margin-bottom: 1.5rem;
+            border-bottom: 1px solid rgba(139, 92, 246, 0.3); padding-bottom: 0.75rem;
+        }
+        #guide-modal ul { list-style: none; padding: 0; margin: 0; }
+        #guide-modal li { display: flex; align-items: center; margin-bottom: 1em; font-size: 1em; }
+        #guide-modal li strong { color: #a78bfa; width: 130px; flex-shrink: 0; }
+
+        /* --- Annotation Styling --- */
+        #annotation-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 60;
+        }
+        .annotation {
+            position: absolute;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .annotation.visible {
+            opacity: 1;
+        }
+        .annotation-window {
+            padding: 8px 12px;
+            background: rgba(17, 24, 39, 0.85);
             color: white;
-            margin-bottom: 1.5rem;
-            border-bottom: 1px solid rgba(139, 92, 246, 0.3);
-            padding-bottom: 0.75rem;
+            border-radius: 6px;
+            border: 1px solid rgba(139, 92, 246, 0.5);
+            font-size: 13px;
+            backdrop-filter: blur(5px);
+            width: 150px;
+            /* transform is now set dynamically in JS */
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
-        #guide-modal ul {
-            list-style: none;
-            padding: 0;
-            margin: 0;
+        .annotation-line {
+            stroke: #a78bfa;
+            stroke-width: 1.5;
+            stroke-dasharray: 4 2;
         }
-        #guide-modal li {
-            display: flex;
-            align-items: center;
-            margin-bottom: 1em;
-            font-size: 1em;
-        }
-        #guide-modal li strong {
-            color: #a78bfa;
-            width: 130px; 
-            flex-shrink: 0;
+        .annotation-dot {
+            fill: #a78bfa;
         }
 
+
+        /* --- CSS 3D Cube Loader --- */
+        #loading-cube-container {
+            width: 50px; /* Halved from 100px */
+            height: 50px; /* Halved from 100px */
+            perspective: 400px;
+            margin-bottom: 2rem; /* Re-added for spacing */
+        }
+
+        #loading-cube {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            animation: rotate-cube 8s infinite linear;
+        }
+
+        .cube-face {
+            position: absolute;
+            width: 50px; /* Halved from 100px */
+            height: 50px; /* Halved from 100px */
+            border: 1px solid #a78bfa; /* Thinner border for smaller size */
+            background-color: rgba(167, 139, 250, 0.1);
+            box-shadow: 0 0 10px rgba(167, 139, 250, 0.5);
+        }
+
+        .face-front  { transform: rotateY(0deg) translateZ(25px); }
+        .face-back   { transform: rotateY(180deg) translateZ(25px); }
+        .face-left   { transform: rotateY(-90deg) translateZ(25px); }
+        .face-right  { transform: rotateY(90deg) translateZ(25px); }
+        .face-top    { transform: rotateX(90deg) translateZ(25px); }
+        .face-bottom { transform: rotateX(-90deg) translateZ(25px); }
+
+        @keyframes rotate-cube {
+            from { transform: rotateX(0deg) rotateY(0deg); }
+            to { transform: rotateX(360deg) rotateY(360deg); }
+        }
+
+        /* New animation for the loading text */
+        @keyframes pulse-text {
+            0%, 100% { opacity: 0.7; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.02); }
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-white">
+    <!-- Container for the Three.js scene -->
     <div id="three-container"></div>
+    <!-- Canvas for drawing hand landmarks over the scene -->
     <canvas id="hand-overlay"></canvas>
+    <!-- Container for HTML-based annotations -->
+    <div id="annotation-container"></div>
 
-    <div id="loading-overlay" class="fixed inset-0 flex items-center justify-center bg-gray-900 bg-opacity-75 z-40">
-        <div class="text-white text-lg p-4 rounded-lg flex items-center space-x-3">
-            <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
-            <span id="loading-text">Initializing...</span>
+    <!-- Mode indicator text at top right -->
+    <div id="mode-indicator" class="fixed top-4 right-4 bg-gray-900 bg-opacity-70 text-white text-sm py-1 px-3 rounded-md z-50">Default Mode</div>
+
+    <!-- Loading indicator - Reverted to flex-col for vertical layout */ -->
+    <div id="loading-overlay" class="fixed inset-0 flex flex-col items-center justify-center bg-gray-900 bg-opacity-80 z-40">
+        <div id="loading-cube-container">
+            <div id="loading-cube">
+                <div class="cube-face face-front"></div>
+                <div class="cube-face face-back"></div>
+                <div class="cube-face face-left"></div>
+                <div class="cube-face face-right"></div>
+                <div class="cube-face face-top"></div>
+                <div class="cube-face face-bottom"></div>
+            </div>
         </div>
+        <span id="loading-text" class="text-white text-lg text-center mt-4 px-4" style="animation: pulse-text 2s infinite ease-in-out;">Initializing Experience...</span>
     </div>
 
+    <!-- Hidden file input for uploading models -->
     <input type="file" id="model-input" accept=".glb,.gltf" style="display: none;">
     
-    <div id="sub-fab-container">
-        <div id="sub-9" class="sub-fab bg-blue-500 hover:bg-blue-600 text-white fab-button" data-action="upload-model"><span class="fab-label">Upload Model</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
-        <div id="sub-8" class="sub-fab bg-gray-500 hover:bg-gray-600 text-white fab-button" data-action="lock-menu"><span class="fab-label">Lock Menu</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
-        <div id="sub-7" class="sub-fab bg-indigo-500 hover:bg-indigo-600 text-white fab-button" data-action="show-guide"><span class="fab-label">Show Guide</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
-        <div id="sub-6" class="sub-fab bg-red-500 hover:bg-red-600 text-white fab-button" data-action="reset-scene"><span class="fab-label">Reset Scene</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 0-8-8v8h8z"/><path d="M20 12h-8V4A8 8 0 1 0 20 12z"/></svg></div>
-        <div id="sub-5" class="sub-fab bg-pink-500 hover:bg-pink-600 text-white fab-button" data-action="play-animation"><span class="fab-label">Play Animation</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9V3z"/></svg></div>
-        <div id="sub-4" class="sub-fab bg-purple-500 hover:bg-purple-600 text-white fab-button" data-action="toggle-autorotate"><span class="fab-label">Auto-Rotate</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-8-8"/><path d="M20 12v3h-3"/></svg></div>
-        <div id="sub-1" class="sub-fab bg-teal-500 hover:bg-teal-600 text-white fab-button" data-action="toggle-camera"><span class="fab-label">Toggle Camera View</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg></div>
-    </div>
-
+    <!-- Main FAB in corner -->
     <div id="fab-container">
         <div id="main-fab" class="fab-button bg-indigo-600 hover:bg-indigo-700 text-white">
             <svg id="fab-icon-unlocked" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>
@@ -183,61 +277,81 @@
         </div>
     </div>
 
+    <!-- Centered overlay for sub-buttons -->
+    <div id="sub-fab-overlay">
+        <div id="sub-1" class="sub-fab bg-teal-500 hover:bg-teal-600 text-white fab-button" data-action="toggle-camera"><span class="fab-label">Camera</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg></div>
+        <div id="sub-2" class="sub-fab bg-blue-500 hover:bg-blue-600 text-white fab-button" data-action="upload-model"><span class="fab-label">Upload</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+        <div id="sub-3" class="sub-fab bg-pink-500 hover:bg-pink-600 text-white fab-button" data-action="play-animation"><span class="fab-label">Animate</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9V3z"/></svg></div>
+        <div id="sub-4" class="sub-fab bg-purple-500 hover:bg-purple-600 text-white fab-button" data-action="toggle-autorotate"><span class="fab-label">Rotate</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-8-8"/><path d="M20 12v3h-3"/></svg></div>
+        <div id="sub-5" class="sub-fab bg-green-500 hover:bg-green-600 text-white fab-button" data-action="add-annotations"><span class="fab-label">Annotate</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><line x1="12" y1="2" x2="12" y2="5"></line><line x1="12" y1="19" x2="12" y2="22"></line><line x1="2" y1="12" x2="5" y2="12"></line><line x1="19" y1="12" x2="22" y2="12"></line></svg></div>
+        <div id="sub-6" class="sub-fab bg-red-500 hover:bg-red-600 text-white fab-button" data-action="reset-scene"><span class="fab-label">Reset</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 0-8-8v8h8z"/><path d="M20 12h-8V4A8 8 0 1 0 20 12z"/></svg></div>
+        <div id="sub-7" class="sub-fab bg-indigo-500 hover:bg-indigo-600 text-white fab-button" data-action="show-guide"><span class="fab-label">Guide</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+        <div id="sub-8" class="sub-fab bg-yellow-500 hover:bg-yellow-600 text-white fab-button" data-action="soft-lock-menu"><span class="fab-label">Soft Lock</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+        <div id="sub-9" class="sub-fab bg-gray-500 hover:bg-gray-600 text-white fab-button" data-action="hard-lock-all"><span class="fab-label">Master Lock</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg></div>
+    </div>
+
+
+    <!-- Gesture Guide Modal -->
     <div id="guide-modal">
         <h2>Gesture Guide</h2>
         <ul>
-            <li><strong>Menu:</strong> Touch Thumb + Pinky</li>
-            <li><strong>Click Button:</strong> Touch Thumb to Index Middle Joint</li>
-            <li><strong>Lock Menu:</strong> Use the Lock button in the menu</li>
-            <li><strong>Unlock Menu:</strong> Make a Punch/Fist gesture</li>
-            <li><strong>Auto-Rotate:</strong> Use the Rotate button in the menu</li>
-            <li><strong>Play Animation:</strong> Cycle through model animations</li>
-            <li><strong>Upload Model:</strong> Load a new .glb or .gltf file</li>
+            <li><strong>Menu:</strong> Punch gesture or click main button</li>
+            <li><strong>Click Button:</strong> Touch Thumb to Index Finger Joint</li>
+            <li><strong>Lock Status:</strong> Hand points change color (Red/Gray)</li>
+            <li><strong>Annotate:</strong> Toggle 5 random info points on the model</li>
+            <li><strong>Soft Lock:</strong> Freezes menu. Main button turns red. Unlock with gesture or click.</li>
+            <li><strong>Master Lock:</strong> Disables gestures. Main button turns gray. Click gray button to unlock.</li>
+            <li><strong>Reset Scene:</strong> Return model to its original state</li>
             <li><strong>Drag Model:</strong> Pinch Thumb + Index Tip</li>
-            <li><strong>Rotate Model:</strong> Join Index + Middle Finger</li>
+            <li><strong>Rotate Model:</strong> Join Index + Middle Finger Tips</li>
             <li><strong>Scale Model:</strong> Pinch with Two Hands</li>
-            <li><strong>Drag Guide:</strong> Pinch Thumb + Index Tip</li>
-            <li><strong>Scale Guide:</strong> Pinch with Two Hands</li>
-            <li><strong>Close Guide:</strong> Touch Thumb to Index Middle Joint</li>
+            <li><strong>Drag Guide:</strong> Pinch to drag the guide window</li>
+            <li><strong>Scale Guide:</strong> Pinch with two hands to scale</li>
+            <li><strong>Close Guide:</strong> "Click" gesture anywhere</li>
         </ul>
     </div>
 
     <script type="module">
+        // Import necessary libraries from MediaPipe and Three.js
         import { HandLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.js";
 
-        let scene, camera, renderer, currentObject, gltfLoader, loadingOverlay, modelInput;
+        // --- Global Variables ---
+        // Three.js related
+        let scene, camera, renderer, currentObject, gltfLoader;
         let videoElement, videoTexture, isVideoBackground = false;
         const originalBackgroundColor = new THREE.Color(0x0a0a0f);
-        
         const clock = new THREE.Clock();
         let animationMixer, animationClips = [], currentAction = null;
 
+        // MediaPipe and Hand Tracking related
         let handLandmarker, handOverlayCanvas, handOverlayCtx, drawingUtils;
         let lastVideoTime = -1, handLandmarkerReady = false;
-        let specialClickDebounce = false;
-        let clickDebounce = false;
+        
+        // UI and Interaction State
+        let loadingOverlay, modelInput, subFabOverlay, guideModal, modeIndicator, annotationContainer;
+        let clickDebounce = false, punchDebounce = false, specialClickDebounce = false;
         let highlightedFab = null;
-
-        let interactionState = 'idle';
+        let interactionState = 'idle'; // Can be 'idle', 'dragging', 'rotating', 'scaling'
         let rotateLastHandPos = new THREE.Vector2();
         let scaleInitialPinchDist = null, scaleInitialModelScale = null;
         let dragOffset = new THREE.Vector3();
-        let fabContainer, subFabContainer, guideModal;
         let isGuideModalVisible = false;
-        let guideModalDragOffset = { x: 0, y: 0 };
-        let isDraggingGuide = false;
-        let guideModalScaleInitialPinchDist = null;
-        let guideModalInitialWidth = 0;
-        let guideModalInitialFontSize = 0;
-        let isMenuLocked = false;
-        let punchDebounce = false;
-        let isAutoRotating = false;
+        let guideModalDragOffset = { x: 0, y: 0 }, isDraggingGuide = false;
+        let guideModalScaleInitialPinchDist = null, guideModalInitialWidth = 0, guideModalInitialFontSize = 0;
+        let isSoftLocked = false, isHardLocked = false, isAutoRotating = false, isAnimationMode = false;
+        let initialModelPosition, initialModelRotation, initialModelScale;
+        let annotations = []; // Array to hold annotation data
+        let annotationsVisible = false; // Tracks annotation visibility state
+        
+        // --- Initialization and Setup ---
 
-        function setLoading(isLoading, text = "Loading...") {
+        // Controls the loading overlay visibility and text
+        function setLoading(isLoading, text = "Processing...") {
             loadingOverlay.querySelector('#loading-text').textContent = text;
             loadingOverlay.classList.toggle('hidden', !isLoading);
         }
 
+        // Properly disposes of a Three.js object to free up memory
         function disposeCurrentObject() {
             if (currentObject) {
                 scene.remove(currentObject);
@@ -252,21 +366,25 @@
             animationMixer = null; animationClips = []; currentAction = null;
         }
 
+        // Loads a 3D model (GLB/GLTF) into the scene
         function loadModel(modelInfo) {
             disposeCurrentObject();
-            setLoading(true, "Loading 3D Model...");
-            gltfLoader.setPath(modelInfo.path || '');
+            clearAnnotations();
+            setLoading(true, "Calibrating 3D Asset...");
             gltfLoader.load(modelInfo.file, (gltf) => {
                 currentObject = gltf.scene;
                 currentObject.name = modelInfo.name;
 
+                // Set up animations if they exist
                 if (gltf.animations && gltf.animations.length) {
                     animationMixer = new THREE.AnimationMixer(currentObject);
                     animationClips = gltf.animations;
+                    // Play the first animation by default
                     currentAction = animationMixer.clipAction(animationClips[0]);
                     currentAction.setLoop(THREE.LoopRepeat).play();
                 }
 
+                // Center and scale the model to fit the view
                 const box = new THREE.Box3().setFromObject(currentObject);
                 const center = box.getCenter(new THREE.Vector3());
                 const size = box.getSize(new THREE.Vector3());
@@ -274,6 +392,12 @@
                 const maxDim = Math.max(size.x, size.y, size.z);
                 const scale = 3.0 / maxDim;
                 currentObject.scale.set(scale, scale, scale);
+                
+                // Store initial transform for resetting
+                initialModelPosition = currentObject.position.clone();
+                initialModelRotation = currentObject.rotation.clone();
+                initialModelScale = currentObject.scale.clone();
+
                 scene.add(currentObject);
                 setLoading(false);
             }, undefined, (error) => {
@@ -282,173 +406,299 @@
             });
         }
         
-        function handleHandGestures(landmarks, handedness) {
+        // Sets up the main Three.js scene, camera, renderer, and lighting
+        function initThreeScene() {
+            scene = new THREE.Scene();
+            scene.background = originalBackgroundColor;
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 5;
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio); // For sharper images on high-res displays
+            document.getElementById('three-container').appendChild(renderer.domElement);
+            gltfLoader = new THREE.GLTFLoader();
+            
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            directionalLight.position.set(5, 10, 7.5);
+            scene.add(directionalLight);
+            
+            const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+            fillLight.position.set(-5, 0, -5);
+            scene.add(fillLight);
+
+            // Handle window resizing
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                if (handOverlayCanvas) {
+                    handOverlayCanvas.width = window.innerWidth;
+                    handOverlayCanvas.height = window.innerHeight;
+                }
+            }, false);
+        }
+        
+        // Initializes MediaPipe HandLandmarker
+        async function createHandLandmarker() {
+            setLoading(true, "Initializing Gesture Recognition...");
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm");
+            handLandmarker = await HandLandmarker.createFromOptions(vision, {
+                baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`, delegate: "GPU" },
+                runningMode: "VIDEO", numHands: 2
+            });
+            drawingUtils = new DrawingUtils(handOverlayCtx);
+            handLandmarkerReady = true;
+            setLoading(false);
+        }
+
+        // Initializes the webcam feed
+        async function initCamera() {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                videoElement = document.createElement('video');
+                videoElement.srcObject = stream;
+                videoElement.playsInline = true; videoElement.muted = true;
+                return new Promise((resolve) => {
+                    videoElement.addEventListener('loadeddata', () => {
+                        videoElement.play();
+                        videoTexture = new THREE.VideoTexture(videoElement);
+                        videoTexture.wrapS = THREE.RepeatWrapping;
+                        videoTexture.repeat.x = -1; // Mirror the video texture
+                        resolve();
+                    });
+                });
+            }
+        }
+        
+        // --- Main Animation Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+            if (animationMixer) animationMixer.update(clock.getDelta());
+            
+            if (isAutoRotating && currentObject && interactionState === 'idle') {
+                currentObject.rotation.y += 0.01;
+            }
+
+            updateAnnotations(); // Update annotation positions every frame
+
+            // Process hand tracking if ready
+            if (handLandmarkerReady && videoElement?.readyState >= 3 && lastVideoTime !== videoElement.currentTime) {
+                lastVideoTime = videoElement.currentTime;
+                const result = handLandmarker.detectForVideo(videoElement, performance.now());
+                handOverlayCtx.clearRect(0, 0, handOverlayCanvas.width, handOverlayCanvas.height);
+                
+                if (result.landmarks && result.landmarks.length > 0) {
+                    // Determine landmark and connector colors based on lock state
+                    let landmarkColor = "#4F46E5"; // Default blue
+                    let connectorColor = "rgba(255, 255, 255, 0.6)"; // Default white
+                    if (isSoftLocked) {
+                        landmarkColor = "#ef4444"; // Red for soft lock
+                        connectorColor = "rgba(239, 68, 68, 0.6)";
+                    } else if (isHardLocked) {
+                        landmarkColor = "#6b7280"; // Gray for hard lock
+                        connectorColor = "rgba(107, 114, 128, 0.6)";
+                    }
+
+                    // Draw hand landmarks and connectors
+                    handOverlayCtx.save();
+                    handOverlayCtx.scale(-1, 1);
+                    handOverlayCtx.translate(-handOverlayCanvas.width, 0);
+                    for(const landmarks of result.landmarks){
+                        drawingUtils.drawConnectors(landmarks, HandLandmarker.HAND_CONNECTIONS, { color: connectorColor, lineWidth: 3 });
+                        drawingUtils.drawLandmarks(landmarks, { color: landmarkColor, radius: 5 });
+                    }
+                    handOverlayCtx.restore();
+                    handleHandGestures(result.landmarks);
+                } else {
+                    handleHandGestures(null); // No hands detected
+                }
+            }
+            renderer.render(scene, camera);
+        }
+
+        // --- UI and State Management ---
+        function updateModeIndicator() {
+            let modeText = '';
+            if (isAnimationMode && isAutoRotating) {
+                modeText = 'Animation + Auto-Rotate Mode';
+            } else if (isAnimationMode) {
+                modeText = 'Animation Mode';
+            } else if (isAutoRotating) {
+                modeText = 'Auto-Rotate Mode';
+            } else {
+                modeText = 'Default Mode';
+            }
+            modeIndicator.textContent = modeText;
+        }
+
+
+        // --- Gesture Recognition and Handling ---
+
+        // The main function to interpret hand landmarks and trigger actions
+        function handleHandGestures(landmarks) {
+            // Hard Lock check: If active, disable ALL gestures.
+            if (isHardLocked) return;
+
             if (!landmarks) {
                 if(highlightedFab) highlightedFab.classList.remove('gesture-highlight');
                 highlightedFab = null;
                 return;
             };
 
+            // Flip landmarks horizontally because the camera feed is mirrored
             const flippedLandmarks = landmarks.map(hand => 
                 hand.map(lm => ({ x: 1 - lm.x, y: lm.y, z: lm.z }))
             );
 
-            const w = window.innerWidth, h = window.innerHeight;
-            const THUMB_TIP = 4, INDEX_FINGER_PIP = 6, INDEX_TIP = 8, MIDDLE_TIP = 12, PINKY_TIP = 20;
-            
-            const indexTipLm = flippedLandmarks[0][INDEX_TIP];
-            const middleTipLm = flippedLandmarks[0][MIDDLE_TIP];
-            const thumbTipLm = flippedLandmarks[0][THUMB_TIP];
-            const pinkyTipLm = flippedLandmarks[0][PINKY_TIP];
-            const indexPipLm = flippedLandmarks[0][INDEX_FINGER_PIP];
+            // Landmark indices
+            const THUMB_TIP = 4, INDEX_FINGER_PIP = 6, INDEX_TIP = 8;
 
-            const indexTip = { x: indexTipLm.x * w, y: indexTipLm.y * h };
-            const middleTip = { x: middleTipLm.x * w, y: middleTipLm.y * h };
-            const thumbTip = { x: thumbTipLm.x * w, y: thumbTipLm.y * h };
-            const pinkyTip = { x: pinkyTipLm.x * w, y: pinkyTipLm.y * h };
-
-            const clickDist = Math.sqrt(Math.pow(thumbTipLm.x - indexPipLm.x, 2) + Math.pow(thumbTipLm.y - indexPipLm.y, 2) + Math.pow(thumbTipLm.z - indexPipLm.z, 2));
-            const newClick = clickDist < 0.04;
-
-            const dist = (p1, p2) => Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
-            const normalClick = dist(indexTip, middleTip) < 40;
-            const specialClick = dist(thumbTip, pinkyTip) < 50;
-
+            // Gesture detection helper functions
             const getIsPunch = (hand) => {
                 if (!hand || hand.length === 0) return false;
                 const palmCenterY = (hand[0].y + hand[5].y + hand[17].y) / 3;
-                const palmCenterX = (hand[0].x + hand[5].x + hand[17].x) / 3;
-                const palmCenter = { x: palmCenterX, y: palmCenterY };
-                const fingerTips = [hand[8], hand[12], hand[16], hand[20]];
-                const dist2D = (p1, p2) => Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
-                let curledFingers = 0;
-                const threshold = 0.07;
-                for (const tip of fingerTips) {
-                    if (dist2D(tip, palmCenter) < threshold) {
-                        curledFingers++;
-                    }
-                }
-                return curledFingers >= 3;
+                const isCurled = (tip) => tip.y > palmCenterY;
+                return isCurled(hand[8]) && isCurled(hand[12]) && isCurled(hand[16]) && isCurled(hand[20]);
             };
-            const isPunch = getIsPunch(flippedLandmarks[0]);
+            const getIsThumbsUp = (hand) => {
+                if (!hand || hand.length === 0) return false;
+                const thumbTip = hand[4], thumbIp = hand[3], thumbMcp = hand[2];
+                const thumbExtended = thumbTip.y < thumbIp.y && thumbIp.y < thumbMcp.y;
+                const indexPip = hand[6], indexTip = hand[8], middlePip = hand[10], middleTip = hand[12];
+                const fingersCurled = (indexTip.y > indexPip.y && middleTip.y > middlePip.y);
+                return thumbExtended && fingersCurled;
+            };
 
-            if (isPunch && !punchDebounce) {
-                if (isMenuLocked) {
-                    isMenuLocked = false;
-                    document.getElementById('fab-icon-locked').classList.add('hidden');
-                    document.getElementById('fab-icon-unlocked').classList.remove('hidden');
+            // Detect specific gestures
+            const isPunch = getIsPunch(flippedLandmarks[0]);
+            const isTwoHandThumbsUp = flippedLandmarks.length === 2 && getIsThumbsUp(flippedLandmarks[0]) && getIsThumbsUp(flippedLandmarks[1]);
+            
+            // Check for click gesture: Thumb tip close to Index PIP joint
+            const thumbTipLm = flippedLandmarks[0][THUMB_TIP];
+            const indexPipLm = flippedLandmarks[0][INDEX_FINGER_PIP];
+            const clickDist = Math.hypot(thumbTipLm.x - indexPipLm.x, thumbTipLm.y - indexPipLm.y, thumbTipLm.z - indexPipLm.z);
+            const isClicking = clickDist < 0.04;
+
+            // --- Gesture Logic ---
+
+            // Animation Mode: Click gesture cycles animations if menu is closed
+            if (isAnimationMode && !subFabOverlay.classList.contains('visible') && isClicking && !clickDebounce) {
+                if (animationClips && animationClips.length > 1) {
+                    const nextClipIndex = (animationClips.indexOf(currentAction.getClip()) + 1) % animationClips.length;
+                    const nextAction = animationMixer.clipAction(animationClips[nextClipIndex]);
+                    currentAction.fadeOut(0.5);
+                    nextAction.reset().fadeIn(0.5).play();
+                    currentAction = nextAction;
                 }
-                punchDebounce = true;
-                setTimeout(() => { punchDebounce = false; }, 1000);
+                clickDebounce = true;
+                setTimeout(() => { clickDebounce = false; }, 500);
+                return; // Prioritize animation change over other interactions
             }
 
+            // Special gesture to unlock soft lock
+            if (isTwoHandThumbsUp && isSoftLocked && !specialClickDebounce) {
+                handleFabAction('unlock-soft-lock');
+                specialClickDebounce = true;
+                setTimeout(() => { specialClickDebounce = false; }, 1000);
+            }
+
+            // If guide modal is open, use specific gestures for it
             if (isGuideModalVisible) {
-                handleGuideModalGestures(flippedLandmarks, newClick);
+                handleGuideModalGestures(flippedLandmarks, isClicking);
                 return; 
             }
             
-            if (!isMenuLocked) {
-                if (specialClick && !specialClickDebounce) {
-                    fabContainer.classList.toggle('open');
-                    subFabContainer.classList.toggle('visible');
-                    specialClickDebounce = true;
-                    setTimeout(() => { specialClickDebounce = false; }, 500);
-                }
-
-                if (subFabContainer.classList.contains('visible')) {
-                    const subFabs = Array.from(document.querySelectorAll('.sub-fab'))
-                                         .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
-                    const numItems = subFabs.length;
-                    if (numItems > 0) {
-                        const topMargin = h * 0.40;
-                        const bottomMargin = h * 0.40;
-                        if (indexTip.y >= topMargin && indexTip.y <= h - bottomMargin) {
-                            const sideMargin = w * 0.15;
-                            const interactiveWidth = w - (sideMargin * 2);
-                            if (indexTip.x < sideMargin || indexTip.x > w - sideMargin) {
-                                if (highlightedFab) {
-                                    highlightedFab.classList.remove('gesture-highlight');
-                                    highlightedFab = null;
-                                }
-                            } else {
-                                const relativeX = indexTip.x - sideMargin;
-                                const segmentWidth = interactiveWidth / numItems;
-                                let selectedIndex = Math.floor(relativeX / segmentWidth);
-                                selectedIndex = Math.max(0, Math.min(numItems - 1, selectedIndex));
-                                const selectedFab = subFabs[selectedIndex];
-                                if (highlightedFab !== selectedFab) {
-                                    if (highlightedFab) highlightedFab.classList.remove('gesture-highlight');
-                                    highlightedFab = selectedFab;
-                                    highlightedFab.classList.add('gesture-highlight');
-                                }
-                            }
-                        } else {
-                            if (highlightedFab) {
-                                highlightedFab.classList.remove('gesture-highlight');
-                                highlightedFab = null;
-                            }
-                        }
-                    } else if (highlightedFab) {
-                        highlightedFab.classList.remove('gesture-highlight');
-                        highlightedFab = null;
-                    }
-                    if (newClick && !clickDebounce && highlightedFab) {
-                        highlightedFab.click();
-                        clickDebounce = true;
-                        setTimeout(() => { clickDebounce = false; }, 500);
-                    }
-                    handleModelInteraction(null, null);
-                    return;
+            // If menu is not soft-locked, handle menu visibility
+            if (!isSoftLocked) {
+                // Open/Close menu with punch gesture
+                if (isPunch && !punchDebounce) {
+                    subFabOverlay.classList.toggle('visible');
+                    punchDebounce = true;
+                    setTimeout(() => { punchDebounce = false; }, 1000);
                 }
             }
+
+            // Handle menu item selection (always available unless hard-locked)
+            if (subFabOverlay.classList.contains('visible')) {
+                const indexTipLm = flippedLandmarks[0][INDEX_TIP];
+                const indexTipCoords = { x: indexTipLm.x * window.innerWidth, y: indexTipLm.y * window.innerHeight };
+                
+                let fabToHighlight = null;
+                document.querySelectorAll('#sub-fab-overlay .sub-fab').forEach(fab => {
+                    const rect = fab.getBoundingClientRect();
+                    if (indexTipCoords.x > rect.left && indexTipCoords.x < rect.right &&
+                        indexTipCoords.y > rect.top && indexTipCoords.y < rect.bottom) {
+                        fabToHighlight = fab;
+                    }
+                });
+
+                if (highlightedFab !== fabToHighlight) {
+                    if (highlightedFab) highlightedFab.classList.remove('gesture-highlight');
+                    highlightedFab = fabToHighlight;
+                    if (highlightedFab) highlightedFab.classList.add('gesture-highlight');
+                }
+                
+                if (isClicking && !clickDebounce && highlightedFab) {
+                    highlightedFab.click();
+                    clickDebounce = true;
+                    setTimeout(() => { clickDebounce = false; }, 500);
+                }
+                // Prevent model interaction while menu is open
+                return; 
+            }
             
+            // If menu is closed, interact with the 3D model
             if (highlightedFab) {
                 highlightedFab.classList.remove('gesture-highlight');
                 highlightedFab = null;
             }
-            handleModelInteraction(flippedLandmarks, handedness, normalClick);
+            handleModelInteraction(flippedLandmarks);
         }
 
-        function handleGuideModalGestures(landmarks, newClick) {
-             const w = window.innerWidth, h = window.innerHeight;
+        // Handles dragging and scaling the guide modal
+        function handleGuideModalGestures(landmarks, isClicking) {
+            const w = window.innerWidth, h = window.innerHeight;
             const THUMB_TIP = 4, INDEX_TIP = 8;
 
             const getPinch = (hand) => {
                 if (!hand || hand.length === 0) return { isPinching: false };
-                const thumbTip = hand[THUMB_TIP];
-                const indexTip = hand[INDEX_TIP];
-                const pinchDist = Math.sqrt(Math.pow(thumbTip.x - indexTip.x, 2) + Math.pow(thumbTip.y - indexTip.y, 2) + Math.pow(thumbTip.z - indexTip.z, 2));
-                return { isPinching: pinchDist < 0.06, center: { x: (thumbTip.x + indexTip.x) / 2 * w, y: (thumbTip.y + indexTip.y) / 2 * h } };
+                const pinchDist = Math.hypot(hand[THUMB_TIP].x - hand[INDEX_TIP].x, hand[THUMB_TIP].y - hand[INDEX_TIP].y, hand[THUMB_TIP].z - hand[INDEX_TIP].z);
+                const center = { x: (hand[THUMB_TIP].x + hand[INDEX_TIP].x) / 2 * w, y: (hand[THUMB_TIP].y + hand[INDEX_TIP].y) / 2 * h };
+                return { isPinching: pinchDist < 0.06, center };
             };
 
-            const hand1 = landmarks[0] || [];
-            const hand2 = landmarks[1] || [];
-            const pinch1 = getPinch(hand1);
-            const pinch2 = getPinch(hand2);
+            const pinch1 = getPinch(landmarks[0] || []);
+            const pinch2 = getPinch(landmarks[1] || []);
 
-            if (hand2.length > 0 && pinch1.isPinching && pinch2.isPinching) {
+            // Two-hand pinch to scale
+            if (landmarks.length > 1 && pinch1.isPinching && pinch2.isPinching) {
                 isDraggingGuide = false;
-                const dist = Math.sqrt(Math.pow(pinch1.center.x - pinch2.center.x, 2) + Math.pow(pinch1.center.y - pinch2.center.y, 2));
+                const dist = Math.hypot(pinch1.center.x - pinch2.center.x, pinch1.center.y - pinch2.center.y);
                 if (guideModalScaleInitialPinchDist === null) {
                     guideModalScaleInitialPinchDist = dist;
                     guideModalInitialWidth = guideModal.offsetWidth;
                     guideModalInitialFontSize = parseFloat(window.getComputedStyle(guideModal).fontSize);
                 } else {
                     const scaleFactor = dist / guideModalScaleInitialPinchDist;
-                    guideModal.style.width = `${guideModalInitialWidth * scaleFactor}px`;
-                    guideModal.style.fontSize = `${guideModalInitialFontSize * scaleFactor}px`;
+                    guideModal.style.width = `${Math.max(250, guideModalInitialWidth * scaleFactor)}px`;
+                    guideModal.style.fontSize = `${Math.max(12, guideModalInitialFontSize * scaleFactor)}px`;
                 }
                 return;
             }
             guideModalScaleInitialPinchDist = null;
 
-            if (newClick && !clickDebounce) {
+            // Close modal with click gesture
+            if (isClicking && !clickDebounce) {
                 handleFabAction('show-guide');
                 clickDebounce = true;
                 setTimeout(() => { clickDebounce = false; }, 500);
                 return;
             }
             
+            // One-hand pinch to drag
             if (pinch1.isPinching) {
                 if (!isDraggingGuide) {
                     isDraggingGuide = true;
@@ -458,41 +708,43 @@
                 }
                 guideModal.style.left = `${pinch1.center.x - guideModalDragOffset.x}px`;
                 guideModal.style.top = `${pinch1.center.y - guideModalDragOffset.y}px`;
-                guideModal.style.transform = `none`;
+                guideModal.style.transform = `none`; // Override centered transform
             } else {
                 isDraggingGuide = false;
             }
         }
 
-        function handleModelInteraction(landmarks, handedness, normalClick) {
+        // Handles drag, rotate, and scale operations on the 3D model
+        function handleModelInteraction(landmarks) {
+             if (isHardLocked) return;
             if (!currentObject || !landmarks) {
-                if (interactionState !== 'idle' && isAutoRotating) {
-                    // No hands detected, resume auto-rotation if it was on
-                }
                 interactionState = 'idle';
                 return;
             }
-
-            let wasInteracting = interactionState !== 'idle';
-
+            
             const w = window.innerWidth, h = window.innerHeight;
-            const THUMB_TIP = 4, INDEX_TIP = 8;
-            const getPinch = (hand) => {
-                const thumbTip = hand[THUMB_TIP];
-                const indexTip = hand[INDEX_TIP];
-                const pinchDist = Math.sqrt(Math.pow(thumbTip.x - indexTip.x, 2) + Math.pow(thumbTip.y - indexTip.y, 2) + Math.pow(thumbTip.z - indexTip.z, 2));
-                return { isPinching: pinchDist < 0.06, center: {x: (thumbTip.x + indexTip.x) / 2 * w, y: (thumbTip.y + indexTip.y) / 2 * h}};
-            };
+            const THUMB_TIP = 4, INDEX_TIP = 8, MIDDLE_TIP = 12;
 
+            const getPinch = (hand) => {
+                if (!hand || hand.length === 0) return { isPinching: false };
+                const pinchDist = Math.hypot(hand[THUMB_TIP].x - hand[INDEX_TIP].x, hand[THUMB_TIP].y - hand[INDEX_TIP].y, hand[THUMB_TIP].z - hand[INDEX_TIP].z);
+                const center = {x: (hand[THUMB_TIP].x + hand[INDEX_TIP].x) / 2 * w, y: (hand[THUMB_TIP].y + hand[INDEX_TIP].y) / 2 * h};
+                return { isPinching: pinchDist < 0.06, center };
+            };
+            
             const hand1 = landmarks[0] || [];
-            const hand2 = landmarks[1] || [];
+            const indexTip = hand1[INDEX_TIP];
+            const middleTip = hand1[MIDDLE_TIP];
+            const rotateDist = indexTip && middleTip ? Math.hypot(indexTip.x - middleTip.x, indexTip.y - middleTip.y) : 1;
+            const isRotating = rotateDist < 0.04;
             const pinch1 = getPinch(hand1);
 
-            if (hand2.length > 0) {
-                const pinch2 = getPinch(hand2);
+            // Two-hand pinch for scaling
+            if (landmarks.length > 1) {
+                const pinch2 = getPinch(landmarks[1] || []);
                 if (pinch1.isPinching && pinch2.isPinching) {
                     interactionState = 'scaling';
-                    const dist = Math.sqrt(Math.pow(pinch1.center.x - pinch2.center.x, 2) + Math.pow(pinch1.center.y - pinch2.center.y, 2));
+                    const dist = Math.hypot(pinch1.center.x - pinch2.center.x, pinch1.center.y - pinch2.center.y);
                     if(scaleInitialPinchDist === null) {
                         scaleInitialPinchDist = dist;
                         scaleInitialModelScale = currentObject.scale.clone();
@@ -503,22 +755,24 @@
                     return; 
                 }
             }
-            scaleInitialPinchDist = null;
-            scaleInitialModelScale = null;
+            scaleInitialPinchDist = null; scaleInitialModelScale = null;
 
-            if (normalClick) {
+            // Rotate gesture (index and middle tips together)
+            if (isRotating) {
+                const handCenter = {x: indexTip.x * w, y: indexTip.y * h };
                 if (interactionState !== 'rotating') {
                     interactionState = 'rotating';
-                    rotateLastHandPos.set(pinch1.center.x, pinch1.center.y);
+                    rotateLastHandPos.set(handCenter.x, handCenter.y);
                 }
-                const dx = pinch1.center.x - rotateLastHandPos.x;
-                const dy = pinch1.center.y - rotateLastHandPos.y;
+                const dx = handCenter.x - rotateLastHandPos.x;
+                const dy = handCenter.y - rotateLastHandPos.y;
                 currentObject.rotation.y += dx * 0.01;
                 currentObject.rotation.x += dy * 0.01;
-                rotateLastHandPos.set(pinch1.center.x, pinch1.center.y);
+                rotateLastHandPos.set(handCenter.x, handCenter.y);
                 return;
             }
 
+            // One-hand pinch for dragging
             if (pinch1.isPinching) {
                 if (interactionState !== 'dragging') {
                     interactionState = 'dragging';
@@ -539,97 +793,113 @@
             interactionState = 'idle';
         }
 
-        function initThreeScene() {
-            scene = new THREE.Scene();
-            scene.background = originalBackgroundColor;
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.z = 5;
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            document.getElementById('three-container').appendChild(renderer.domElement);
-            gltfLoader = new THREE.GLTFLoader();
-            
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-            scene.add(ambientLight);
-            
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
-            directionalLight.position.set(5, 10, 7.5);
-            scene.add(directionalLight);
-            
-            const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
-            fillLight.position.set(-5, 0, -5);
-            scene.add(fillLight);
-
-            window.addEventListener('resize', () => {
-                camera.aspect = window.innerWidth / window.innerHeight;
-                camera.updateProjectionMatrix();
-                renderer.setSize(window.innerWidth, window.innerHeight);
-                if (handOverlayCanvas) {
-                    handOverlayCanvas.width = window.innerWidth;
-                    handOverlayCanvas.height = window.innerHeight;
-                }
-            }, false);
+        // --- Annotation Logic ---
+        function clearAnnotations() {
+            annotationContainer.innerHTML = '';
+            annotations = [];
+            annotationsVisible = false; // Reset visibility state
         }
-        
-        async function createHandLandmarker() {
-            setLoading(true, "Loading Hand Model...");
-            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm");
-            handLandmarker = await HandLandmarker.createFromOptions(vision, {
-                baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`, delegate: "GPU" },
-                runningMode: "VIDEO", numHands: 2
+
+        function createAnnotations() {
+            clearAnnotations();
+            if (!currentObject) return;
+
+            let mesh = null;
+            currentObject.traverse(child => {
+                if (child.isMesh && !mesh) mesh = child;
             });
-            drawingUtils = new DrawingUtils(handOverlayCtx);
-            handLandmarkerReady = true;
-            setLoading(false);
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            if (animationMixer) animationMixer.update(clock.getDelta());
+            if (!mesh || !mesh.geometry.attributes.position) return;
             
-            if (isAutoRotating && currentObject && interactionState === 'idle') {
-                currentObject.rotation.y += 0.005;
-            }
+            const randomAnnotationTexts = ["Engine Core", "Primary Joint", "Power Cell", "Exhaust Port", "Sensor Array", "Armor Plating", "Hydraulic System", "Optical Unit"];
+            const vertexCount = mesh.geometry.attributes.position.count;
+            
+            for (let i = 0; i < 5; i++) {
+                const randomIndex = Math.floor(Math.random() * vertexCount);
+                const localPos = new THREE.Vector3().fromBufferAttribute(mesh.geometry.attributes.position, randomIndex);
+                
+                const onLeftSide = i < 2; // Place 2 annotations on the left, 3 on the right
 
-            if (handLandmarkerReady && videoElement?.readyState >= 3 && lastVideoTime !== videoElement.currentTime) {
-                lastVideoTime = videoElement.currentTime;
-                const result = handLandmarker.detectForVideo(videoElement, performance.now());
-                handOverlayCtx.clearRect(0, 0, handOverlayCanvas.width, handOverlayCanvas.height);
-                if (result.landmarks && result.landmarks.length > 0) {
-                    handOverlayCtx.save();
-                    handOverlayCtx.scale(-1, 1);
-                    handOverlayCtx.translate(-handOverlayCanvas.width, 0);
-                    for(let i=0; i < result.landmarks.length; i++){
-                        const landmarks = result.landmarks[i];
-                        drawingUtils.drawConnectors(landmarks, HandLandmarker.HAND_CONNECTIONS, { color: "rgba(255, 255, 255, 0.6)", lineWidth: 3 });
-                        drawingUtils.drawLandmarks(landmarks, { color: "#4F46E5", radius: 5 });
-                    }
-                    handOverlayCtx.restore();
-                    handleHandGestures(result.landmarks, result.handedness);
+                const annotationElement = document.createElement('div');
+                annotationElement.className = 'annotation';
+                
+                const randomText = randomAnnotationTexts[Math.floor(Math.random() * randomAnnotationTexts.length)];
+                let svgHTML, windowTransform;
+
+                if (onLeftSide) {
+                    // For left-aligned annotations:
+                    // The window is positioned to the left of the anchor point.
+                    windowTransform = `transform: translate(calc(-100% - 65px), -50%);`;
+                    // The SVG is shifted far to the left so the dot (at cx="190") aligns with the anchor.
+                    // The line is drawn from right (190) to left (140).
+                    svgHTML = `
+                        <svg height="100" width="200" style="position: absolute; transform: translate(-190px, -50%);">
+                            <circle class="annotation-dot" cx="190" cy="50" r="4"/>
+                            <line class="annotation-line" x1="190" y1="50" x2="140" y2="50" />
+                        </svg>
+                    `;
                 } else {
-                    handleHandGestures(null, null);
+                    // For right-aligned annotations (default):
+                    // The window is positioned to the right of the anchor point.
+                    windowTransform = `transform: translate(65px, -50%);`;
+                    // The SVG is shifted left by 10px so the dot (at cx="10") aligns with the anchor.
+                    // The line is drawn from left (10) to right (60).
+                    svgHTML = `
+                        <svg height="100" width="200" style="position: absolute; transform: translate(-10px, -50%);">
+                            <circle class="annotation-dot" cx="10" cy="50" r="4"/>
+                            <line class="annotation-line" x1="10" y1="50" x2="60" y2="50" />
+                        </svg>
+                    `;
                 }
-            }
-            renderer.render(scene, camera);
-        }
-        
-        async function initCamera() {
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                videoElement = document.createElement('video');
-                videoElement.srcObject = stream;
-                videoElement.playsInline = true; videoElement.muted = true;
-                return new Promise((resolve) => {
-                    videoElement.addEventListener('loadeddata', () => {
-                        videoElement.play();
-                        videoTexture = new THREE.VideoTexture(videoElement);
-                        videoTexture.wrapS = THREE.RepeatWrapping;
-                        videoTexture.repeat.x = -1;
-                        resolve();
-                    });
+
+                annotationElement.innerHTML = `
+                    ${svgHTML}
+                    <div class="annotation-window" style="${windowTransform}">${randomText}</div>
+                `;
+                annotationContainer.appendChild(annotationElement);
+
+                annotations.push({
+                    element: annotationElement,
+                    anchorPointLocal: localPos
                 });
             }
+            annotationsVisible = true; // Set to visible on creation
         }
+
+        function updateAnnotations() {
+            if (!currentObject || annotations.length === 0) return;
+
+            // Toggle visibility based on the global state
+            if (!annotationsVisible) {
+                for (const ann of annotations) {
+                    ann.element.classList.remove('visible');
+                }
+                return;
+            }
+
+            currentObject.updateMatrixWorld(); // Ensure model's world matrix is up-to-date
+            
+            for (const ann of annotations) {
+                const worldPos = ann.anchorPointLocal.clone().applyMatrix4(currentObject.matrixWorld);
+                const screenVector = worldPos.clone().project(camera);
+
+                // Hide if point is behind the camera
+                if (screenVector.z > 1) {
+                    ann.element.classList.remove('visible');
+                    continue;
+                } else {
+                     ann.element.classList.add('visible');
+                }
+
+                const x = (screenVector.x * 0.5 + 0.5) * window.innerWidth;
+                const y = (-screenVector.y * 0.5 + 0.5) * window.innerHeight;
+
+                ann.element.style.left = `${x}px`;
+                ann.element.style.top = `${y}px`;
+            }
+        }
+
+
+        // --- UI Event Handlers and Actions ---
 
         function toggleCameraBackground() {
             if (!videoTexture) return;
@@ -637,64 +907,128 @@
             scene.background = isVideoBackground ? videoTexture : originalBackgroundColor;
         }
 
+        // Handles clicks on the FAB menu buttons
         function handleFabAction(action) {
+            const mainFab = document.getElementById('main-fab');
             switch(action) {
-                case 'reset-scene': loadModel({ name: 'Damaged Helmet', path: 'https://threejs.org/examples/models/gltf/DamagedHelmet/glTF/', file: 'DamagedHelmet.gltf' }); break;
-                case 'play-animation':
-                    if (animationClips && animationClips.length > 0) {
-                        const nextClipIndex = (animationClips.indexOf(currentAction.getClip()) + 1) % animationClips.length;
-                        const nextAction = animationMixer.clipAction(animationClips[nextClipIndex]);
-                        currentAction.fadeOut(0.5);
-                        nextAction.reset().fadeIn(0.5).play();
-                        currentAction = nextAction;
+                case 'reset-scene': 
+                    clearAnnotations();
+                    isAnimationMode = false;
+                    isAutoRotating = false;
+                    updateModeIndicator();
+                    if (currentObject) {
+                        if (initialModelPosition) currentObject.position.copy(initialModelPosition);
+                        if (initialModelRotation) currentObject.rotation.copy(initialModelRotation);
+                        if (initialModelScale) currentObject.scale.copy(initialModelScale);
                     }
                     break;
+                case 'play-animation':
+                    isAnimationMode = !isAnimationMode;
+                    updateModeIndicator();
+                    break;
                 case 'toggle-camera': toggleCameraBackground(); break;
+                case 'add-annotations':
+                    if (annotations.length === 0) {
+                        createAnnotations(); // Create if they don't exist
+                    } else {
+                        annotationsVisible = !annotationsVisible; // Otherwise, just toggle visibility
+                    }
+                    break;
                 case 'show-guide':
                     isGuideModalVisible = !isGuideModalVisible;
                     guideModal.classList.toggle('visible', isGuideModalVisible);
                     break;
-                case 'lock-menu':
-                    isMenuLocked = true;
-                    document.getElementById('fab-icon-unlocked').classList.add('hidden');
-                    document.getElementById('fab-icon-locked').classList.remove('hidden');
+                case 'soft-lock-menu':
+                    isSoftLocked = !isSoftLocked;
+                    if (isSoftLocked) {
+                        isHardLocked = false; // Deactivate hard lock
+                        mainFab.classList.add('soft-locked');
+                        mainFab.classList.remove('hard-locked');
+                        subFabOverlay.classList.remove('visible'); // Close menu on lock
+                    } else {
+                        mainFab.classList.remove('soft-locked');
+                    }
+                    updateLockIcons();
                     break;
-                case 'toggle-autorotate':
+                case 'unlock-soft-lock': // Called by gesture
+                    if (isSoftLocked) {
+                        isSoftLocked = false;
+                        mainFab.classList.remove('soft-locked');
+                        updateLockIcons();
+                    }
+                    break;
+                case 'hard-lock-all':
+                    isHardLocked = !isHardLocked;
+                    if (isHardLocked) {
+                        if (isSoftLocked) { // Deactivate soft lock if active
+                           isSoftLocked = false;
+                           mainFab.classList.remove('soft-locked');
+                        }
+                        mainFab.classList.add('hard-locked');
+                        subFabOverlay.classList.remove('visible'); // Close menu on lock
+                    } else {
+                        mainFab.classList.remove('hard-locked');
+                    }
+                    updateLockIcons();
+                    break;
+                case 'toggle-autorotate': 
                     isAutoRotating = !isAutoRotating;
+                    updateModeIndicator();
                     break;
-                case 'upload-model':
-                    modelInput.click();
-                    break;
+                case 'upload-model': modelInput.click(); break;
             }
         }
         
+        // Centralizes the logic for showing the correct lock icon
+        function updateLockIcons() {
+            const isAnyLockActive = isSoftLocked || isHardLocked;
+            document.getElementById('fab-icon-locked').classList.toggle('hidden', !isAnyLockActive);
+            document.getElementById('fab-icon-unlocked').classList.toggle('hidden', isAnyLockActive);
+        }
+
+        // --- Main execution starts here ---
         window.onload = async () => {
+            // Get references to all necessary DOM elements
             loadingOverlay = document.getElementById('loading-overlay');
             handOverlayCanvas = document.getElementById('hand-overlay');
             handOverlayCtx = handOverlayCanvas.getContext('2d');
-            fabContainer = document.getElementById('fab-container');
-            subFabContainer = document.getElementById('sub-fab-container');
+            subFabOverlay = document.getElementById('sub-fab-overlay');
             guideModal = document.getElementById('guide-modal');
             modelInput = document.getElementById('model-input');
+            modeIndicator = document.getElementById('mode-indicator');
+            annotationContainer = document.getElementById('annotation-container');
             handOverlayCanvas.width = window.innerWidth;
             handOverlayCanvas.height = window.innerHeight;
 
+            // Initialize the 3D scenes
             initThreeScene();
-            
+
+            // The main FAB's click function handles locks and toggles the menu.
+            document.getElementById('main-fab').addEventListener('click', () => {
+                if (isHardLocked) {
+                    // If hard locked, the only way to unlock is by clicking.
+                    handleFabAction('hard-lock-all');
+                } else if (isSoftLocked) {
+                    // Allow mouse click to also unlock soft lock for convenience.
+                    handleFabAction('soft-lock-menu');
+                } else {
+                    // If not locked, toggle the menu visibility.
+                    subFabOverlay.classList.toggle('visible');
+                }
+            });
+
+            // Set up click listeners for all sub-FAB buttons
             document.querySelectorAll('.sub-fab').forEach(fab => {
                 fab.addEventListener('click', () => {
                     handleFabAction(fab.dataset.action);
-                    fabContainer.classList.remove('open');
-                    subFabContainer.classList.remove('visible');
+                    // Do not hide menu on lock clicks
+                    if (fab.dataset.action !== 'soft-lock-menu' && fab.dataset.action !== 'hard-lock-all') {
+                       subFabOverlay.classList.remove('visible');
+                    }
                 });
             });
-             document.getElementById('main-fab').addEventListener('click', () => {
-                if (!isMenuLocked) {
-                    fabContainer.classList.toggle('open');
-                    subFabContainer.classList.toggle('visible');
-                }
-             });
 
+            // Listener for the file input
             modelInput.addEventListener('change', (event) => {
                 const file = event.target.files[0];
                 if (file) {
@@ -703,9 +1037,10 @@
                 }
             });
             
+            // Initialize camera, hand tracking, load default model, and start animation loop
             await initCamera(); 
             await createHandLandmarker();
-            loadModel({ name: 'Damaged Helmet', path: 'https://threejs.org/examples/models/gltf/DamagedHelmet/glTF/', file: 'DamagedHelmet.gltf' });
+            loadModel({ name: 'RobotExpressive', file: 'https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb' });
             
             animate();
         }
