@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select a 3D Model</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .option-card {
+            transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+            border: 2px solid transparent;
+        }
+        .option-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 0 20px 5px #3b82f6;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-6">
+
+    <div class="text-center mb-10">
+        <h1 class="text-4xl font-bold mb-2">AR Gesture Viewer</h1>
+        <p class="text-gray-400">Choose an option to begin.</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10 w-full max-w-4xl">
+        <!-- Option 1: Launch and then upload from within the app -->
+        <div id="launch-and-upload-card" class="option-card bg-gray-800 rounded-lg p-8 flex flex-col items-center justify-center cursor-pointer text-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mb-4 text-indigo-400"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+            <h3 class="font-semibold text-xl mb-2">Launch Blank Canvas</h3>
+            <p class="text-gray-400 text-sm">Open the AR viewer and upload a model from the in-app menu.</p>
+        </div>
+        
+        <!-- Option 2: Use a model from a GitHub repository -->
+        <div id="server-model-card" class="option-card bg-gray-800 rounded-lg p-8 flex flex-col items-center justify-center cursor-pointer text-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mb-4 text-teal-400"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
+            <h3 class="font-semibold text-xl mb-2">Launch with Live Model</h3>
+            <p class="text-gray-400 text-sm">Load the model specified by your user dashboard.</p>
+        </div>
+    </div>
+
+    <div class="mt-12 text-center">
+        <a href="User_Dash.html" class="text-gray-400 hover:text-white transition-colors duration-300 inline-flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M19 12H5"></path><polyline points="12 19 5 12 12 5"></polyline></svg>
+            Back to Dashboard
+        </a>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const launchAndUploadCard = document.getElementById('launch-and-upload-card');
+            const serverModelCard = document.getElementById('server-model-card');
+
+            const githubModel = {
+                name: 'Live Model',
+                // This is now a fallback URL. The code below will try to replace it.
+                url: 'https://raw.githubusercontent.com/USER/REPO/main/PATH/TO/YOUR/model.gltf'
+            };
+
+            // --- NEW LOGIC ---
+            // 1. Read the URL from the dashboard
+            const urlParams = new URLSearchParams(window.location.search);
+            const liveUrlFromDashboard = urlParams.get('liveUrl');
+
+            // 2. If the URL exists, update the githubModel object
+            if (liveUrlFromDashboard) {
+                githubModel.url = decodeURIComponent(liveUrlFromDashboard);
+            }
+            // --- END NEW LOGIC ---
+
+
+            // This card launches the viewer empty, ready for an in-app upload.
+            launchAndUploadCard.addEventListener('click', () => {
+                window.location.href = 'AR_Game.html';
+            });
+
+            // This card launches with the model URL (either the new live one or the fallback).
+            serverModelCard.addEventListener('click', () => {
+                const viewerUrl = `AR_Game.html?modelUrl=${encodeURIComponent(githubModel.url)}&modelName=${encodeURIComponent(githubModel.name)}`;
+                window.location.href = viewerUrl;
+            });
+        });
+    </script>
+
+</body>
+</html>
+

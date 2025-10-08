@@ -1,0 +1,1191 @@
+<!DOCTYPE html>
+ <html lang="en">
+ <head>
+     <meta charset="UTF-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <title>Gesture Controlled 3D Shape Editor</title>
+     <!-- Load Tailwind CSS -->
+     <script src="https://cdn.tailwindcss.com"></script>
+     <!-- Load Three.js (Core) -->
+     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+     <!-- Load GLTFLoader for 3D models -->
+     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+     <!-- MediaPipe Tasks Vision Library for hand tracking -->
+     <script type="module" src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.js"></script>
+     <style>
+         /* Basic setup */
+         body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; background-color: #111827; }
+         canvas { display: block; width: 100vw; height: 100vh; }
+         
+         /* The canvas for the 3D scene */
+         #three-container canvas { cursor: grab; }
+
+         /* Overlay canvas for drawing hand landmarks */
+         #hand-overlay { position: fixed; top: 0; left: 0; pointer-events: none; z-index: 50; }
+         
+         /* Mode Indicator */
+         #mode-indicator {
+            position: fixed; top: 1rem; right: 1rem;
+            background-color: rgba(17, 24, 39, 0.8);
+            color: white; padding: 0.5rem 1rem;
+            border-radius: 0.5rem; z-index: 100;
+            font-size: 0.875rem;
+            backdrop-filter: blur(5px);
+         }
+
+         /* Main FAB container at the bottom-right */
+         #fab-container {
+             position: fixed;  
+             bottom: 2rem;
+             right: 2rem;
+             z-index: 100;
+         }
+
+         /* Overlay for sub-buttons, centered and hidden by default */
+         #sub-fab-overlay {
+             position: fixed;
+             top: 50%;
+             left: 50%;
+             transform: translate(-50%, -50%);
+             z-index: 99;
+             pointer-events: none;
+             opacity: 0;
+             visibility: hidden;
+             transition: opacity 0.3s ease, visibility 0.3s ease;
+             height: 60px; /* Container height */
+         }
+         #sub-fab-overlay.visible {
+             opacity: 1;
+             visibility: visible;
+             pointer-events: auto;
+         }
+
+         /* General style for all FABs */
+         .fab-button {
+             width: 55px; height: 55px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
+             transition: transform 0.2s ease-in-out, background-color 0.2s, filter 0.2s, box-shadow 0.2s;
+             cursor: pointer;
+         }
+         .fab-button:active { transform: scale(0.95); filter: brightness(85%); }
+         #main-fab svg { transition: transform 0.3s ease-in-out; }
+         #main-fab { z-index: 10; }  
+         .fab-button.active-mode {
+            box-shadow: 0 0 25px 8px #f59e0b; /* Amber glow for active mode */
+         }
+
+
+         /* Sub-button initial state (hidden and scaled down) */
+         .sub-fab {
+             opacity: 0;
+             visibility: hidden;
+             transform: scale(0.5);  
+             transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+             position: absolute;
+             top: 50%;
+             left: 50%;
+             margin-top: -27.5px;
+             margin-left: -27.5px;
+         }
+
+         /* Highlight effect for gesture selection */
+         .gesture-highlight {  
+             box-shadow: 0 0 25px 8px #3b82f6; /* Deep blue glow */
+         }
+         
+         /* Styles for locked buttons */
+         .soft-locked { background-color: #ef4444 !important; } /* Red-500 */
+         .hard-locked { background-color: #4b5563 !important; } /* Gray-600 */
+
+
+         /* Labels for sub-buttons */
+         .fab-label {
+             position: absolute;
+             top: -10px; /* Position label above the button */
+             left: 50%;
+             transform: translate(-50%, -100%);
+             padding: 6px 12px;
+             background-color: rgba(17, 24, 39, 0.95); color: white; border-radius: 5px;
+             font-size: 14px; white-space: nowrap; opacity: 0;
+             transition: opacity 0.3s ease, transform 0.3s ease;
+             pointer-events: none; visibility: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+         }
+         
+         /* Show label on hover or when highlighted by gesture */
+         .sub-fab:hover .fab-label,
+         .sub-fab.gesture-highlight .fab-label {  
+             opacity: 1;  
+             transform: translate(-50%, -120%); /* Animate upwards */
+             visibility: visible;  
+         }
+
+         /* --- Animation for opening the FAB menu --- */
+         #sub-fab-overlay.visible .sub-fab {  
+             opacity: 1;  
+             visibility: visible;  
+             transform: scale(1); /* Bring to full size */
+         }
+         
+        /* 4-5-4 Layout */
+        /* Top Row (4) */
+        #sub-fab-overlay.visible #sub-1 { transform: translate(-105px, -80px) scale(1); }
+        #sub-fab-overlay.visible #sub-2 { transform: translate(-35px, -80px) scale(1); }
+        #sub-fab-overlay.visible #sub-3 { transform: translate(35px, -80px) scale(1); }
+        #sub-fab-overlay.visible #sub-4 { transform: translate(105px, -80px) scale(1); }
+        /* Middle Row (5) */
+        #sub-fab-overlay.visible #sub-5 { transform: translate(-140px, 0px) scale(1); }
+        #sub-fab-overlay.visible #sub-6 { transform: translate(-70px, 0px) scale(1); }
+        #sub-fab-overlay.visible #sub-7 { transform: translate(0px, 0px) scale(1); }
+        #sub-fab-overlay.visible #sub-8 { transform: translate(70px, 0px) scale(1); }
+        #sub-fab-overlay.visible #sub-9 { transform: translate(140px, 0px) scale(1); }
+        /* Bottom Row (4) */
+        #sub-fab-overlay.visible #sub-10 { transform: translate(-105px, 80px) scale(1); }
+        #sub-fab-overlay.visible #sub-11 { transform: translate(-35px, 80px) scale(1); }
+        #sub-fab-overlay.visible #sub-12 { transform: translate(35px, 80px) scale(1); }
+        #sub-fab-overlay.visible #sub-13 { transform: translate(105px, 80px) scale(1); }
+
+
+         /* --- Guide & Palette Modal Styling --- */
+         .modal-overlay {
+             position: fixed;
+             top: 50%; left: 50%;
+             transform: translate(-50%, -50%);
+             width: 90%; max-width: 650px; /* Wider for more shapes */
+             background-color: rgba(10, 20, 40, 0.4); /* Made more transparent */
+             backdrop-filter: blur(15px); /* Increased blur */
+             border-radius: 1rem;
+             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+             border: 1px solid rgba(139, 92, 246, 0.5);
+             padding: 2rem; z-index: 200;
+             opacity: 0; visibility: hidden;
+             transition: opacity 0.3s ease, visibility 0.3s;
+             color: #e5e7eb;
+         }
+         .modal-overlay.visible { opacity: 1; visibility: visible; }
+         .modal-overlay h2 {
+             text-align: center; font-size: 1.5em; font-weight: bold; color: white; margin-bottom: 1.5rem;
+             border-bottom: 1px solid rgba(139, 92, 246, 0.3); padding-bottom: 0.75rem;
+         }
+         #guide-modal ul { list-style: none; padding: 0; margin: 0; }
+         #guide-modal li { display: flex; align-items: center; margin-bottom: 1em; font-size: 1em; }
+         #guide-modal li strong { color: #a78bfa; width: 130px; flex-shrink: 0; }
+
+         /* --- Palette Specific Styles --- */
+         .palette-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); justify-items: center; gap: 1rem; }
+         .swatch {
+             width: 60px; height: 60px; border-radius: 0.5rem; cursor: pointer;
+             border: 3px solid transparent;
+             transition: transform 0.2s, border-color 0.2s;
+             display: flex; align-items: center; justify-content: center;
+             background-color: rgba(255, 255, 255, 0.1);
+             position: relative; /* Needed for label positioning */
+         }
+         .swatch:hover, .swatch.gesture-highlight { transform: scale(1.1); border-color: #fff; }
+         .swatch svg {
+             width: 36px; height: 36px;
+             stroke: #e5e7eb;
+         }
+         .color-swatch { border-radius: 50%; width: 50px; height: 50px; }
+         .texture-swatch { background-size: cover; background-position: center; }
+
+        #shape-label-display {
+            width: 100%;
+            height: 40px;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: rgba(220, 38, 38, 0.7); /* Semi-transparent red */
+            border-radius: 0.5rem;
+            color: white;
+            font-size: 1.1rem;
+            font-weight: bold;
+            transition: background-color 0.3s;
+            text-transform: capitalize;
+        }
+
+
+         /* --- CSS 3D Cube Loader --- */
+         #loading-cube-container { width: 50px; height: 50px; perspective: 400px; margin-bottom: 2rem; }
+         #loading-cube { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; animation: rotate-cube 8s infinite linear; }
+         .cube-face {
+             position: absolute; width: 50px; height: 50px;
+             border: 1px solid #a78bfa; background-color: rgba(167, 139, 250, 0.1);
+             box-shadow: 0 0 10px rgba(167, 139, 250, 0.5);
+         }
+         .face-front  { transform: rotateY(0deg) translateZ(25px); } 
+         .face-back   { transform: rotateY(180deg) translateZ(25px); }
+         .face-left   { transform: rotateY(-90deg) translateZ(25px); }
+         .face-right  { transform: rotateY(90deg) translateZ(25px); }
+         .face-top    { transform: rotateX(90deg) translateZ(25px); }
+         .face-bottom { transform: rotateX(-90deg) translateZ(25px); }
+         @keyframes rotate-cube { from { transform: rotateX(0deg) rotateY(0deg); } to { transform: rotateX(360deg) rotateY(360deg); } }
+         @keyframes pulse-text { 0%, 100% { opacity: 0.7; transform: scale(1); } 50% { opacity: 1; transform: scale(1.02); } }
+     </style>
+ </head>
+ <body class="bg-gray-900 text-white">
+     <!-- Container for the Three.js scene -->
+     <div id="three-container"></div>
+     <!-- Canvas for drawing hand landmarks over the scene -->
+     <canvas id="hand-overlay"></canvas>
+     <!-- Mode indicator -->
+     <div id="mode-indicator">Object Mode</div>
+
+     <!-- Loading indicator -->
+     <div id="loading-overlay" class="fixed inset-0 flex flex-col items-center justify-center bg-gray-900 bg-opacity-80 z-40">
+         <div id="loading-cube-container">
+             <div id="loading-cube">
+                 <div class="cube-face face-front"></div> <div class="cube-face face-back"></div>
+                 <div class="cube-face face-left"></div> <div class="cube-face face-right"></div>
+                 <div class="cube-face face-top"></div> <div class="cube-face face-bottom"></div>
+             </div>
+         </div>
+         <span id="loading-text" class="text-white text-lg text-center mt-4 px-4" style="animation: pulse-text 2s infinite ease-in-out;">Initializing Experience...</span>
+     </div>
+     
+     <!-- Main FAB in corner -->
+     <div id="fab-container">
+         <div id="main-fab" class="fab-button bg-indigo-600 hover:bg-indigo-700 text-white">
+             <svg id="fab-icon-unlocked" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>
+             <svg id="fab-icon-locked" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+         </div>
+     </div>
+
+     <!-- Centered overlay for sub-buttons -->
+     <div id="sub-fab-overlay">
+        <!-- Row 1: Creation & Modification -->
+        <div id="sub-1" class="sub-fab bg-green-500 hover:bg-green-600 text-white fab-button" data-action="toggle-shapes"><span class="fab-label">Add Shape</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg></div>
+        <div id="sub-2" class="sub-fab bg-red-500 hover:bg-red-600 text-white fab-button" data-action="delete-shape"><span class="fab-label">Delete</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></div>
+        <div id="sub-3" class="sub-fab bg-blue-500 hover:bg-blue-600 text-white fab-button" data-action="toggle-colors"><span class="fab-label">Color</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg></div>
+        <div id="sub-4" class="sub-fab bg-purple-500 hover:bg-purple-600 text-white fab-button" data-action="toggle-textures"><span class="fab-label">Texture</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+        <!-- Row 2: View Control -->
+        <div id="sub-5" class="sub-fab bg-amber-500 hover:bg-amber-600 text-white fab-button" data-action="toggle-camera-mode"><span class="fab-label">Orbit Mode</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path><polyline points="22 12 12 12 12 2"></polyline></svg></div>
+        <div id="sub-6" class="sub-fab bg-sky-500 hover:bg-sky-600 text-white fab-button" data-action="switch-camera"><span class="fab-label">Switch Cam</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/><path d="M13 5H20a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-7"/><path d="m3 16 3-3 1.5 1.5M13 8l3 3-4 4h-3v-3l4-4Z"/></svg></div>
+        <div id="sub-7" class="sub-fab bg-teal-500 hover:bg-teal-600 text-white fab-button" data-action="toggle-camera-bg"><span class="fab-label">AR Mode</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m18 18-1.5-1.5"/><path d="m6 18 1.5-1.5"/><path d="m18 6-1.5 1.5"/><path d="m6 6 1.5 1.5"/></svg></div>
+        <div id="sub-8" class="sub-fab bg-cyan-500 hover:bg-cyan-600 text-white fab-button" data-action="toggle-grid"><span class="fab-label">Toggle Grid</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg></div>
+        <div id="sub-9" class="sub-fab bg-amber-700 hover:bg-amber-800 text-white fab-button" data-action="reset-scene"><span class="fab-label">Reset Scene</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg></div>
+        <!-- Row 3: App Control -->
+        <div id="sub-10" class="sub-fab bg-indigo-500 hover:bg-indigo-600 text-white fab-button" data-action="show-guide"><span class="fab-label">Guide</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+        <div id="sub-11" class="sub-fab bg-rose-500 hover:bg-rose-600 text-white fab-button" data-action="soft-lock-menu"><span class="fab-label">Soft Lock</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+        <div id="sub-12" class="sub-fab bg-slate-500 hover:bg-slate-600 text-white fab-button" data-action="hard-lock-all"><span class="fab-label">Master Lock</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+        <div id="sub-13" class="sub-fab bg-lime-500 hover:bg-lime-600 text-white fab-button" data-action="back-to-dashboard"><span class="fab-label">Back</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg></div>
+     </div>
+
+     <!-- Gesture Guide Modal -->
+     <div id="guide-modal" class="modal-overlay">
+         <h2>Gesture Guide</h2>
+         <ul>
+             <li><strong>Menu:</strong> Punch gesture to toggle menu</li>
+             <li><strong>Click Button:</strong> Touch Thumb to Index Finger Joint</li>
+             <li><strong>Select/Drag:</strong> Pinch Thumb + Index Tip over an object</li>
+             <li><strong>Rotate:</strong> Join Index + Middle Finger Tips <br><small>(Rotates Object or in Orbit Mode)</small></li>
+             <li><strong>Scale/Zoom:</strong> Pinch with Two Hands<br><small>(Scales Object or Zooms in Orbit Mode)</small></li>
+             <li><strong>Soft Lock:</strong> Lock menu. Unlock with Two Thumbs Up.</li>
+             <li><strong>Close Modals:</strong> "Click" gesture anywhere</li>
+         </ul>
+     </div>
+     
+     <!-- Shape Palette Modal -->
+     <div id="shape-palette-modal" class="modal-overlay">
+        <h2>Choose Shape</h2>
+        <div id="shape-label-display">Hover or point to a shape</div>
+        <div class="palette-grid">
+            <div class="swatch" data-shape="cube" data-name="Cube"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg></div>
+            <div class="swatch" data-shape="sphere" data-name="Sphere"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle></svg></div>
+            <div class="swatch" data-shape="cone" data-name="Cone"><svg viewBox="0 0 24 24"><path d="M12 2l10 20H2l10-20z"/><ellipse cx="12" cy="22" rx="10" ry="2"/></svg></div>
+            <div class="swatch" data-shape="cuboid" data-name="Cuboid"><svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="8" rx="1"/><path d="M6 8l-3 4v4l3-4"/><path d="M18 8l3 4v4l-3-4"/><path d="M3 16l3 4h12l3-4"/></svg></div>
+            <div class="swatch" data-shape="cylinder" data-name="Cylinder"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><ellipse cx="12" cy="19" rx="9" ry="3"/><path d="M3 5v14 M21 5v14"/></svg></div>
+            <div class="swatch" data-shape="pyramid" data-name="Pyramid"><svg viewBox="0 0 24 24"><path d="M12 2L2 22h20L12 2z"/></svg></div>
+            <div class="swatch" data-shape="circle" data-name="Circle"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2" fill="none"/></svg></div>
+            <div class="swatch" data-shape="torus" data-name="Torus"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2" fill="none"/><circle cx="12" cy="12" r="4" stroke-width="2" fill="none"/></svg></div>
+            <div class="swatch" data-shape="dodecahedron" data-name="Dodecahedron"><svg viewBox="0 0 24 24"><path d="M12 2 L 20 8 L 16 18 L 8 18 L 4 8 Z M 12 2 L 12 9 M 4 8 L 12 9 L 20 8 M 8 18 L 12 9 L 16 18" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+            <div class="swatch" data-shape="icosahedron" data-name="Icosahedron"><svg viewBox="0 0 24 24"><path d="M12 2L22 20H2z M12 2v20 M2 20L17 11" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+            <div class="swatch" data-shape="octahedron" data-name="Octahedron"><svg viewBox="0 0 24 24"><path d="M12 2L22 12L12 22L2 12z M2 12h20" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+            <div class="swatch" data-shape="tetrahedron" data-name="Tetrahedron"><svg viewBox="0 0 24 24"><path d="M12 2L22 20H2z M12 2 L 12 20 M2 20L12 11" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+            <div class="swatch" data-shape="torusknot" data-name="Torus Knot"><svg viewBox="0 0 24 24"><path d="M10 10 C 10 5, 14 5, 14 10 C 14 15, 6 15, 6 10 C 6 5, 18 5, 18 10 C 18 15, 10 15, 10 19" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+            <div class="swatch" data-shape="ring" data-name="Ring"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2" fill="none"/><circle cx="12" cy="12" r="6" stroke-width="2" fill="none"/></svg></div>
+            <div class="swatch" data-shape="triangularprism" data-name="Tri-Prism"><svg viewBox="0 0 24 24"><path d="M2 20l10-18 10 18z M2 20h20" fill="none" stroke="currentColor" stroke-width="1.5" /></svg></div>
+            <div class="swatch" data-shape="squarepyramid" data-name="Sq-Pyramid"><svg viewBox="0 0 24 24"><path d="M3 21h18L12 3z M3 21l9-18 9 18" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+            <div class="swatch" data-shape="hexagonalprism" data-name="Hex-Prism"><svg viewBox="0 0 24 24"><path d="M4 8l8-4 8 4v8l-8 4-8-4z M4 8v8 M20 8v8 M12 4v16" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+            <div class="swatch" data-shape="pentagonalpyramid" data-name="Pen-Pyramid"><svg viewBox="0 0 24 24"><path d="M12 2l-10 7 4 11h12l4-11z M2 9l10-7 10 7 M12 2v20" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+            <div class="swatch" data-shape="capsule" data-name="Capsule"><svg viewBox="0 0 24 24"><path d="M18 6 A 6 6 0 0 0 6 6 V 18 A 6 6 0 0 0 18 18 Z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+            <div class="swatch" data-shape="starprism" data-name="Star Prism"><svg viewBox="0 0 24 24"><path d="M12 2l3 7h7l-5 6 2 8-7-5-7 5 2-8-5-6h7z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+            <div class="swatch" data-shape="helix" data-name="Helix"><svg viewBox="0 0 24 24"><path d="M4 4c4 0 4 4 4 4s0 4-4 4-4 4-4 4 0 4 4 4" fill="none" stroke="currentColor" stroke-width="1.5" transform="translate(8, 0)"/></svg></div>
+            <div class="swatch" data-shape="ellipsoid" data-name="Ellipsoid"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="10" ry="7" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+        </div>
+     </div>
+
+     <!-- Color Palette Modal -->
+     <div id="color-palette-modal" class="modal-overlay">
+        <h2>Choose Color</h2>
+        <div class="palette-grid">
+            <div class="swatch color-swatch" style="background-color: #f1f5f9;" data-color="#f1f5f9"></div>
+            <div class="swatch color-swatch" style="background-color: #6b7280;" data-color="#6b7280"></div>
+            <div class="swatch color-swatch" style="background-color: #000000; border: 1px solid #444;" data-color="#000000"></div>
+            <div class="swatch color-swatch" style="background-color: #92400e;" data-color="#92400e"></div>
+            <div class="swatch color-swatch" style="background-color: #ef4444;" data-color="#ef4444"></div>
+            <div class="swatch color-swatch" style="background-color: #b91c1c;" data-color="#b91c1c"></div>
+            <div class="swatch color-swatch" style="background-color: #f97316;" data-color="#f97316"></div>
+            <div class="swatch color-swatch" style="background-color: #eab308;" data-color="#eab308"></div>
+            <div class="swatch color-swatch" style="background-color: #84cc16;" data-color="#84cc16"></div>
+            <div class="swatch color-swatch" style="background-color: #22c55e;" data-color="#22c55e"></div>
+            <div class="swatch color-swatch" style="background-color: #15803d;" data-color="#15803d"></div>
+            <div class="swatch color-swatch" style="background-color: #14b8a6;" data-color="#14b8a6"></div>
+            <div class="swatch color-swatch" style="background-color: #0ea5e9;" data-color="#0ea5e9"></div>
+            <div class="swatch color-swatch" style="background-color: #60a5fa;" data-color="#60a5fa"></div>
+            <div class="swatch color-swatch" style="background-color: #3b82f6;" data-color="#3b82f6"></div>
+            <div class="swatch color-swatch" style="background-color: #4f46e5;" data-color="#4f46e5"></div>
+            <div class="swatch color-swatch" style="background-color: #8b5cf6;" data-color="#8b5cf6"></div>
+            <div class="swatch color-swatch" style="background-color: #d946ef;" data-color="#d946ef"></div>
+            <div class="swatch color-swatch" style="background-color: #ec4899;" data-color="#ec4899"></div>
+            <div class="swatch color-swatch" style="background-color: #f43f5e;" data-color="#f43f5e"></div>
+        </div>
+     </div>
+     
+     <!-- Texture Palette Modal -->
+     <div id="texture-palette-modal" class="modal-overlay">
+        <h2>Choose Texture</h2>
+        <div class="palette-grid">
+            <div class="swatch texture-swatch" style="background-color: #888;" data-texture="clear"></div>
+            <div class="swatch texture-swatch" style="background-image: url('https://threejs.org/examples/textures/brick_diffuse.jpg')" data-texture="https://threejs.org/examples/textures/brick_diffuse.jpg"></div>
+            <div class="swatch texture-swatch" style="background-image: url('https://threejs.org/examples/textures/hardwood2_diffuse.jpg')" data-texture="https://threejs.org/examples/textures/hardwood2_diffuse.jpg"></div>
+            <div class="swatch texture-swatch" style="background-image: url('https://threejs.org/examples/textures/metalness.jpg')" data-texture="https://threejs.org/examples/textures/metalness.jpg"></div>
+            <div class="swatch texture-swatch" style="background-image: url('https://threejs.org/examples/textures/terrain/grasslight-big.jpg')" data-texture="https://threejs.org/examples/textures/terrain/grasslight-big.jpg"></div>
+            <div class="swatch texture-swatch" style="background-image: url('https://threejs.org/examples/textures/uv_grid_opengl.jpg')" data-texture="https://threejs.org/examples/textures/uv_grid_opengl.jpg"></div>
+            <div class="swatch" data-texture="wireframe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg></div>
+            <div class="swatch" data-texture="glass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="3" x2="21" y2="21"></line></svg></div>
+            <div class="swatch texture-swatch" style="background-image: url('https://threejs.org/examples/textures/water.jpg')" data-texture="https://threejs.org/examples/textures/water.jpg"></div>
+            <div class="swatch texture-swatch" style="background-image: url('https://threejs.org/examples/textures/disturb.jpg')" data-texture="https://threejs.org/examples/textures/disturb.jpg"></div>
+        </div>
+     </div>
+
+     <script type="module">
+         // Import necessary libraries from MediaPipe and Three.js
+         import { HandLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.js";
+
+         // --- Global Variables ---
+         let scene, camera, renderer, textureLoader, cameraPivot, gridHelper;
+         const originalBackgroundColor = new THREE.Color(0x111827);
+         
+         let sceneObjects = [];
+         let selectedObject = null;
+         
+         let handLandmarker, handOverlayCanvas, handOverlayCtx, drawingUtils;
+         let lastVideoTime = -1, handLandmarkerReady = false;
+         let videoElement, videoTexture, isVideoBackground = false;
+         let currentFacingMode = 'user';
+         
+         let loadingOverlay, subFabOverlay, guideModal, colorPaletteModal, texturePaletteModal, shapePaletteModal, modeIndicator, shapeLabelDisplay;
+         let clickDebounce = false, punchDebounce = false, specialClickDebounce = false;
+         let highlightedUIElement = null;
+         let interactionState = 'idle'; 
+         let isCameraMode = false;
+         let isSoftLocked = false;
+         let isHardLocked = false;
+         
+         const SMOOTHING_FACTOR = 0.15;
+
+         // State for smoothing
+         let targetPosition = new THREE.Vector3();
+         let targetQuaternion = new THREE.Quaternion();
+         let targetScale = new THREE.Vector3();
+         let targetCameraPivotRotation = new THREE.Euler();
+         let targetCameraPosition = new THREE.Vector3();
+         
+         let rotateLastHandPos = new THREE.Vector2();
+         let orbitLastHandPos = new THREE.Vector2();
+         let dragInitialPinchPos = new THREE.Vector2();
+         let dragInitialObjectPos = new THREE.Vector3();
+
+         let scaleInitialPinchDist = null;
+         let zoomInitialPinchDist = null;
+
+         
+         // --- Initialization and Setup ---
+
+         function setLoading(isLoading, text = "Processing...") {
+             loadingOverlay.querySelector('#loading-text').textContent = text;
+             loadingOverlay.style.display = isLoading ? 'flex' : 'none';
+         }
+
+         function disposeObject(object) {
+            if (!object) return;
+             if (object.isGroup) {
+                 object.children.forEach(child => disposeObject(child));
+             }
+            if (object.geometry) object.geometry.dispose();
+            if (object.material) {
+                if (Array.isArray(object.material)) object.material.forEach(m => m.dispose());
+                else object.material.dispose();
+            }
+            scene.remove(object);
+         }
+
+         function initThreeScene() {
+             scene = new THREE.Scene();
+             scene.background = originalBackgroundColor;
+             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+             camera.position.z = 15;
+             targetCameraPosition.copy(camera.position);
+
+             cameraPivot = new THREE.Object3D();
+             scene.add(cameraPivot);
+             cameraPivot.add(camera);
+
+             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+             renderer.setSize(window.innerWidth, window.innerHeight);
+             renderer.setPixelRatio(window.devicePixelRatio);
+             renderer.shadowMap.enabled = true;
+             document.getElementById('three-container').appendChild(renderer.domElement);
+             
+             textureLoader = new THREE.TextureLoader();
+             
+            const hemisphereLight = new THREE.HemisphereLight(0x87ceeb, 0x444444, 1.5);
+            hemisphereLight.position.set(0, 20, 0);
+            scene.add(hemisphereLight);
+
+            const keyLight = new THREE.DirectionalLight(0xffffff, 2.0);
+            keyLight.position.set(5, 5, 5);
+            keyLight.castShadow = true;
+            keyLight.shadow.mapSize.width = 2048;
+            keyLight.shadow.mapSize.height = 2048;
+            scene.add(keyLight);
+
+            const fillLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            fillLight.position.set(-5, 2, 5);
+            scene.add(fillLight);
+
+            const rimLight = new THREE.DirectionalLight(0xffffff, 2.0);
+            rimLight.position.set(0, 3, -10);
+            scene.add(rimLight);
+             
+             gridHelper = new THREE.GridHelper(100, 100, 0x888888, 0x444444);
+             gridHelper.position.y = -5;
+             gridHelper.visible = false;
+             scene.add(gridHelper);
+
+             window.addEventListener('resize', () => {
+                 camera.aspect = window.innerWidth / window.innerHeight;
+                 camera.updateProjectionMatrix();
+                 renderer.setSize(window.innerWidth, window.innerHeight);
+                 handOverlayCanvas.width = window.innerWidth;
+                 handOverlayCanvas.height = window.innerHeight;
+             }, false);
+         }
+         
+         async function createHandLandmarker() {
+             setLoading(true, "Initializing Gesture Recognition...");
+             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm");
+             handLandmarker = await HandLandmarker.createFromOptions(vision, {
+                 baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`, delegate: "GPU" },
+                 runningMode: "VIDEO", numHands: 2
+             });
+             drawingUtils = new DrawingUtils(handOverlayCtx);
+             handLandmarkerReady = true;
+             setLoading(false);
+         }
+        
+         function stopVideoStream() {
+            if (videoElement && videoElement.srcObject) {
+                videoElement.srcObject.getTracks().forEach(track => track.stop());
+                videoElement.srcObject = null;
+            }
+            if (videoTexture) {
+                videoTexture.dispose();
+                videoTexture = null;
+            }
+         }
+
+         async function initCamera(facingMode = 'user') {
+             stopVideoStream();
+             try {
+                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facingMode } });
+                     videoElement = document.createElement('video');
+                     videoElement.srcObject = stream;
+                     videoElement.playsInline = true;
+                     videoElement.muted = true;
+                     videoElement.addEventListener('loadeddata', () => {
+                        videoElement.play();
+                        videoTexture = new THREE.VideoTexture(videoElement);
+                        videoTexture.wrapS = THREE.RepeatWrapping;
+                        videoTexture.repeat.x = (facingMode === 'user') ? -1 : 1;
+                        if(isVideoBackground) scene.background = videoTexture;
+                     });
+                 }
+             } catch(err) {
+                console.error("Failed to get camera feed:", err);
+                // If environment camera fails, fall back to user
+                if(facingMode === 'environment') {
+                    console.log("Falling back to front camera.");
+                    currentFacingMode = 'user';
+                    initCamera('user');
+                }
+             }
+         }
+         
+         // --- Main Animation Loop ---
+         function animate() {
+             requestAnimationFrame(animate);
+
+             // Process hand tracking first to get latest targets
+             if (handLandmarkerReady && videoElement?.readyState >= 3 && lastVideoTime !== videoElement.currentTime) {
+                 lastVideoTime = videoElement.currentTime;
+                 const result = handLandmarker.detectForVideo(videoElement, performance.now());
+                 handOverlayCtx.clearRect(0, 0, handOverlayCanvas.width, handOverlayCanvas.height);
+                 
+                 if (result.landmarks && result.landmarks.length > 0) {
+                     let landmarkColor = isHardLocked ? "#6b7280" : isSoftLocked ? "#ef4444" : "#4F46E5";
+                     let connectorColor = isHardLocked ? "rgba(107, 114, 128, 0.6)" : isSoftLocked ? "rgba(239, 68, 68, 0.6)" : "rgba(255, 255, 255, 0.6)";
+
+                     handOverlayCtx.save();
+                     if (currentFacingMode === 'user') {
+                        handOverlayCtx.scale(-1, 1);
+                        handOverlayCtx.translate(-handOverlayCanvas.width, 0);
+                     }
+                     for(const landmarks of result.landmarks){
+                         drawingUtils.drawConnectors(landmarks, HandLandmarker.HAND_CONNECTIONS, { color: connectorColor, lineWidth: 3 });
+                         drawingUtils.drawLandmarks(landmarks, { color: landmarkColor, radius: 5 });
+                     }
+                     handOverlayCtx.restore();
+                     
+                     handleHandGestures(result.landmarks);
+                 } else {
+                    interactionState = 'idle';
+                    if (highlightedUIElement) highlightedUIElement.classList.remove('gesture-highlight');
+                    highlightedUIElement = null;
+                 }
+             }
+             
+             // Apply smoothing to all transforms
+             updateSmoothedTransforms();
+             
+             renderer.render(scene, camera);
+         }
+         
+         function updateSmoothedTransforms() {
+            // Smooth selected object transforms
+            if (selectedObject) {
+                selectedObject.position.lerp(targetPosition, SMOOTHING_FACTOR);
+                selectedObject.quaternion.slerp(targetQuaternion, SMOOTHING_FACTOR);
+                selectedObject.scale.lerp(targetScale, SMOOTHING_FACTOR);
+            }
+            // Smooth camera transforms
+            cameraPivot.rotation.y += (targetCameraPivotRotation.y - cameraPivot.rotation.y) * SMOOTHING_FACTOR;
+            camera.position.lerp(targetCameraPosition, SMOOTHING_FACTOR);
+         }
+
+         // --- Scene and Object Management ---
+         
+         function selectObject(object) {
+            if (selectedObject === object) return;
+            selectedObject = object;
+            // When a new object is selected, reset the target transforms to its current state
+            if (selectedObject) {
+                targetPosition.copy(selectedObject.position);
+                targetQuaternion.copy(selectedObject.quaternion);
+                targetScale.copy(selectedObject.scale);
+            }
+         }
+         
+         function addShape(type) {
+            let geometry;
+            let shape = null; // Use a generic object that can be a Mesh or a Group
+
+            switch(type) {
+                case 'cube': geometry = new THREE.BoxGeometry(2, 2, 2); break;
+                case 'sphere': geometry = new THREE.SphereGeometry(1.2, 32, 16); break;
+                case 'cone': geometry = new THREE.ConeGeometry(1.2, 2.5, 32); break;
+                case 'cuboid': geometry = new THREE.BoxGeometry(2.5, 1.5, 1.5); break;
+                case 'cylinder': geometry = new THREE.CylinderGeometry(1, 1, 2.5, 32); break;
+                case 'pyramid': geometry = new THREE.ConeGeometry(1.5, 2, 4); break; // A square pyramid
+                case 'circle': geometry = new THREE.CircleGeometry(1.5, 32); break;
+                case 'torus': geometry = new THREE.TorusGeometry(1, 0.4, 16, 100); break;
+                case 'dodecahedron': geometry = new THREE.DodecahedronGeometry(1.2); break;
+                case 'icosahedron': geometry = new THREE.IcosahedronGeometry(1.2); break;
+                case 'octahedron': geometry = new THREE.OctahedronGeometry(1.2); break;
+                case 'tetrahedron': geometry = new THREE.TetrahedronGeometry(1.2); break;
+                case 'torusknot': geometry = new THREE.TorusKnotGeometry(0.8, 0.3, 100, 16); break;
+                case 'ring': geometry = new THREE.RingGeometry(0.8, 1.5, 32); break;
+                case 'triangularprism': {
+                    const shape = new THREE.Shape();
+                    shape.moveTo(-1, -1); shape.lineTo(1, -1); shape.lineTo(0, 1); shape.lineTo(-1, -1);
+                    geometry = new THREE.ExtrudeGeometry(shape, { depth: 2, bevelEnabled: false });
+                    break;
+                }
+                case 'squarepyramid': geometry = new THREE.ConeGeometry(1.5, 2, 4); break;
+                case 'hexagonalprism': geometry = new THREE.CylinderGeometry(1, 1, 2.5, 6); break;
+                case 'pentagonalpyramid': geometry = new THREE.ConeGeometry(1.5, 2, 5); break;
+                case 'capsule': {
+                    const radius = 0.75;
+                    const height = 1.5;
+                    const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, height, 32));
+                    const sphere1 = new THREE.Mesh(new THREE.SphereGeometry(radius, 32, 16));
+                    const sphere2 = new THREE.Mesh(new THREE.SphereGeometry(radius, 32, 16));
+                    sphere1.position.y = height / 2;
+                    sphere2.position.y = -height / 2;
+                    const group = new THREE.Group();
+                    group.add(cylinder, sphere1, sphere2);
+                    shape = group; // The shape is the group itself
+                    break;
+                }
+                case 'starprism': {
+                    const starShape = new THREE.Shape();
+                    const outerRadius = 1.5;
+                    const innerRadius = 0.7;
+                    const points = 5;
+                    starShape.moveTo(0, outerRadius);
+                    for (let i = 0; i <= points * 2; i++) {
+                        const radius = i % 2 === 0 ? outerRadius : innerRadius;
+                        const angle = (i * Math.PI) / points;
+                        starShape.lineTo(Math.sin(angle) * radius, -Math.cos(angle) * radius);
+                    }
+                    geometry = new THREE.ExtrudeGeometry(starShape, { depth: 0.5, bevelEnabled: false });
+                    break;
+                }
+                case 'helix': {
+                     const curve = new (class extends THREE.Curve {
+                        getPoint(t) {
+                            const theta = t * Math.PI * 6;
+                            return new THREE.Vector3(
+                                Math.cos(theta) * 1.5,
+                                (t * 4) - 2,
+                                Math.sin(theta) * 1.5
+                            );
+                        }
+                    })();
+                    geometry = new THREE.TubeGeometry(curve, 64, 0.2, 8, false);
+                    break;
+                }
+                case 'ellipsoid':
+                    geometry = new THREE.SphereGeometry(1, 32, 16);
+                    shape = new THREE.Mesh(geometry);
+                    shape.scale.set(1.5, 1, 1); // Make it egg-shaped
+                    break;
+            }
+
+            if (!shape) { // If it wasn't a special case like a Group or scaled sphere
+                 shape = new THREE.Mesh(geometry);
+            }
+             
+            // Apply material and transformations to all children if it's a group
+            const material = new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.5, metalness: 0.5, side: THREE.DoubleSide });
+            shape.traverse(child => {
+                if (child.isMesh) {
+                    child.material = material;
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+
+            shape.position.set((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4, 0);
+            
+            scene.add(shape);
+            sceneObjects.push(shape);
+            selectObject(shape);
+         }
+         
+         function deleteSelectedShape() {
+            if (!selectedObject) return;
+            const index = sceneObjects.indexOf(selectedObject);
+            if (index > -1) sceneObjects.splice(index, 1);
+            disposeObject(selectedObject);
+            selectObject(sceneObjects.length > 0 ? sceneObjects[0] : null);
+         }
+         
+         function applyColor(color) {
+             if (selectedObject) {
+                 selectedObject.traverse(child => {
+                     if (child.isMesh) child.material.color.set(color);
+                 });
+             }
+         }
+
+         function applyTexture(url) {
+            if (selectedObject) {
+                selectedObject.traverse(child => {
+                    if (child.isMesh) {
+                        // Create a new material to avoid state conflicts
+                        let newMaterial;
+                        const oldColor = child.material.color;
+
+                        if (url === 'glass') {
+                            newMaterial = new THREE.MeshPhysicalMaterial({
+                                color: oldColor,
+                                metalness: 0.1,
+                                roughness: 0.25,
+                                ior: 1.5,
+                                transmission: 0.95,
+                                transparent: true,
+                                thickness: 0.5
+                            });
+                        } else {
+                            newMaterial = new THREE.MeshStandardMaterial({
+                                color: oldColor,
+                                roughness: 0.5,
+                                metalness: 0.5,
+                                side: THREE.DoubleSide
+                            });
+
+                            if (url === 'wireframe') {
+                                newMaterial.wireframe = true;
+                            } else if (url !== 'clear') {
+                                textureLoader.load(url, (texture) => {
+                                    texture.wrapS = THREE.RepeatWrapping;
+                                    texture.wrapT = THREE.RepeatWrapping;
+                                    newMaterial.map = texture;
+                                    newMaterial.needsUpdate = true;
+                                });
+                            }
+                        }
+                        
+                        child.material.dispose(); // Dispose the old material
+                        child.material = newMaterial;
+                    }
+                });
+            }
+         }
+
+        function toggleCameraBackground() {
+            if (!videoTexture) return;
+            isVideoBackground = !isVideoBackground;
+            scene.background = isVideoBackground ? videoTexture : originalBackgroundColor;
+            document.querySelector('[data-action="toggle-camera-bg"]').classList.toggle('active-mode', isVideoBackground);
+        }
+
+         // --- Gesture Recognition Helpers ---
+        const getPinch = (hand) => {
+            if (!hand || hand.length === 0) return { isPinching: false };
+            const w = window.innerWidth, h = window.innerHeight;
+            const THUMB_TIP = 4, INDEX_TIP = 8;
+            const pinchDist = Math.hypot(hand[THUMB_TIP].x - hand[INDEX_TIP].x, hand[THUMB_TIP].y - hand[INDEX_TIP].y);
+            const center = {x: (hand[THUMB_TIP].x + hand[INDEX_TIP].x) / 2 * w, y: (hand[THUMB_TIP].y + hand[INDEX_TIP].y) / 2 * h};
+            return { isPinching: pinchDist < 0.06, center };
+        };
+
+        const isPunch = (hand) => {
+            if (!hand || hand.length === 0) return false;
+            const palmCenterY = (hand[0].y + hand[5].y + hand[17].y) / 3;
+            return [8, 12, 16, 20].every(tipIndex => hand[tipIndex].y > palmCenterY);
+        };
+        
+        const getIsThumbsUp = (hand) => {
+            if (!hand || hand.length === 0) return false;
+            const thumbExtended = hand[4].y < hand[3].y && hand[3].y < hand[2].y;
+            const fingersCurled = hand[8].y > hand[6].y && hand[12].y > hand[10].y && hand[16].y > hand[14].y && hand[20].y > hand[18].y;
+            return thumbExtended && fingersCurled;
+        };
+
+        const getIsRotating = (hand) => {
+            if (!hand || hand.length < 13) return false;
+            const INDEX_TIP = 8, MIDDLE_TIP = 12;
+            const indexTip = hand[INDEX_TIP];
+            const middleTip = hand[MIDDLE_TIP];
+            const rotateDist = Math.hypot(indexTip.x - middleTip.x, indexTip.y - middleTip.y);
+            return rotateDist < 0.04;
+        };
+
+         // --- Gesture Handling ---
+         function handleHandGestures(landmarks) {
+             if (isHardLocked) return;
+             if (!landmarks || landmarks.length === 0) return;
+             
+             const processedLandmarks = landmarks.map(hand => hand.map(lm => {
+                return (currentFacingMode === 'user') ? { x: 1 - lm.x, y: lm.y, z: lm.z } : lm;
+             }));
+             const THUMB_TIP = 4, INDEX_FINGER_PIP = 6;
+             
+             const clickDist = Math.hypot(processedLandmarks[0][THUMB_TIP].x - processedLandmarks[0][INDEX_FINGER_PIP].x, processedLandmarks[0][THUMB_TIP].y - processedLandmarks[0][INDEX_FINGER_PIP].y);
+             const isClicking = clickDist < 0.04;
+             
+            const isTwoHandThumbsUp = processedLandmarks.length === 2 && getIsThumbsUp(processedLandmarks[0]) && getIsThumbsUp(processedLandmarks[1]);
+            if (isTwoHandThumbsUp && isSoftLocked && !specialClickDebounce) {
+                handleFabAction('soft-lock-menu');
+                specialClickDebounce = true;
+                setTimeout(() => { specialClickDebounce = false; }, 1000);
+            }
+
+             const anyModalVisible = document.querySelector('.modal-overlay.visible');
+             if(anyModalVisible) {
+                if (isClicking && !clickDebounce) {
+                    if (!highlightedUIElement) { anyModalVisible.classList.remove('visible'); } 
+                    else { highlightedUIElement.click(); }
+                    clickDebounce = true;
+                    setTimeout(() => { clickDebounce = false; }, 500);
+                }
+                const paletteItems = anyModalVisible.querySelectorAll('.swatch');
+                highlightUIElementForGesture(processedLandmarks[0][8], paletteItems);
+                return;
+             }
+             
+             if (!isSoftLocked && isPunch(processedLandmarks[0]) && !punchDebounce) {
+                 subFabOverlay.classList.toggle('visible');
+                 punchDebounce = true;
+                 setTimeout(() => { punchDebounce = false; }, 1000);
+             }
+
+             if (subFabOverlay.classList.contains('visible')) {
+                 if (isClicking && !clickDebounce && highlightedUIElement) {
+                     highlightedUIElement.click();
+                     clickDebounce = true;
+                     setTimeout(() => { clickDebounce = false; }, 500);
+                 }
+                 highlightUIElementForGesture(processedLandmarks[0][8], document.querySelectorAll('.sub-fab'));
+                 return; 
+             }
+             
+             if (highlightedUIElement) {
+                 highlightedUIElement.classList.remove('gesture-highlight');
+                 highlightedUIElement = null;
+                 if(shapeLabelDisplay) shapeLabelDisplay.textContent = 'Hover or point to a shape';
+             }
+             
+             if (isCameraMode) {
+                let gestureDetected = false;
+                if (processedLandmarks.length > 1) {
+                    const pinch1 = getPinch(processedLandmarks[0] || []);
+                    const pinch2 = getPinch(processedLandmarks[1] || []);
+                    if (pinch1.isPinching && pinch2.isPinching) {
+                        handleCameraZoom(pinch1.center, pinch2.center);
+                        gestureDetected = true;
+                    }
+                }
+
+                if (!gestureDetected && getIsRotating(processedLandmarks[0])) {
+                    handleCameraOrbit(processedLandmarks[0]);
+                    gestureDetected = true;
+                }
+
+                if (!gestureDetected) {
+                    interactionState = 'idle';
+                    zoomInitialPinchDist = null;
+                }
+             } else {
+                handleObjectInteraction(processedLandmarks);
+             }
+         }
+         
+         function highlightUIElementForGesture(indexTipLm, elements) {
+            const tipCoords = { x: indexTipLm.x * window.innerWidth, y: indexTipLm.y * window.innerHeight };
+            let elementToHighlight = null;
+            elements.forEach(el => {
+                const rect = el.getBoundingClientRect();
+                if (tipCoords.x > rect.left && tipCoords.x < rect.right && tipCoords.y > rect.top && tipCoords.y < rect.bottom) {
+                    elementToHighlight = el;
+                }
+            });
+
+            if (highlightedUIElement !== elementToHighlight) {
+                if (highlightedUIElement) highlightedUIElement.classList.remove('gesture-highlight');
+                highlightedUIElement = elementToHighlight;
+                if (highlightedUIElement) {
+                    highlightedUIElement.classList.add('gesture-highlight');
+                    if (shapeLabelDisplay && highlightedUIElement.dataset.name) {
+                        shapeLabelDisplay.textContent = highlightedUIElement.dataset.name;
+                    }
+                } else {
+                     if (shapeLabelDisplay) shapeLabelDisplay.textContent = 'Hover or point to a shape';
+                }
+            }
+         }
+
+         function handleCameraZoom(pinch1Center, pinch2Center) {
+            interactionState = 'zooming';
+            const dist = Math.hypot(pinch1Center.x - pinch2Center.x, pinch1Center.y - pinch2Center.y);
+
+            if (zoomInitialPinchDist === null) {
+                zoomInitialPinchDist = dist;
+            } else {
+                const scaleFactor = zoomInitialPinchDist / dist;
+                targetCameraPosition.z = camera.position.z * scaleFactor;
+                targetCameraPosition.z = Math.max(2, Math.min(50, targetCameraPosition.z));
+                zoomInitialPinchDist = dist; // Update for continuous zoom
+            }
+         }
+         
+         function handleCameraOrbit(rotatingHand) {
+            const w = window.innerWidth;
+            const INDEX_TIP = 8;
+            const indexTip = rotatingHand[INDEX_TIP];
+            const handCenter = { x: indexTip.x * w };
+
+            if (interactionState !== 'orbiting') {
+                interactionState = 'orbiting';
+                orbitLastHandPos.set(handCenter.x, 0);
+                return;
+            }
+
+            const dx = handCenter.x - orbitLastHandPos.x;
+            const yawAngle = -dx * 0.01;
+            targetCameraPivotRotation.y += yawAngle;
+            orbitLastHandPos.set(handCenter.x, 0);
+         }
+
+
+         function handleObjectInteraction(landmarks) {
+            if (!landmarks || landmarks.length === 0) {
+                interactionState = 'idle';
+                return;
+            }
+             
+             const hand1 = landmarks[0] || [];
+             const isRotating = getIsRotating(hand1);
+             const pinch1 = getPinch(hand1);
+
+             if (landmarks.length > 1) {
+                 const pinch2 = getPinch(landmarks[1] || []);
+                 if (pinch1.isPinching && pinch2.isPinching && selectedObject) {
+                     interactionState = 'scaling';
+                     const dist = Math.hypot(pinch1.center.x - pinch2.center.x, pinch1.center.y - pinch2.center.y);
+                     if(scaleInitialPinchDist === null) {
+                         scaleInitialPinchDist = dist;
+                     } else {
+                         const scaleFactor = dist / scaleInitialPinchDist;
+                         targetScale.copy(selectedObject.scale).multiplyScalar(scaleFactor);
+                         scaleInitialPinchDist = dist; // Update for continuous scaling
+                     }
+                     return; 
+                 }
+             }
+             scaleInitialPinchDist = null;
+
+             if (isRotating && selectedObject) {
+                 const w = window.innerWidth, h = window.innerHeight;
+                 const INDEX_TIP = 8;
+                 const handCenter = {x: hand1[INDEX_TIP].x * w, y: hand1[INDEX_TIP].y * h };
+                 if (interactionState !== 'rotating') {
+                     interactionState = 'rotating';
+                     rotateLastHandPos.set(handCenter.x, handCenter.y);
+                 }
+                 const dx = handCenter.x - rotateLastHandPos.x;
+                 const dy = handCenter.y - rotateLastHandPos.y;
+                 
+                 const deltaQuaternion = new THREE.Quaternion()
+                    .setFromEuler(new THREE.Euler(dy * 0.01, dx * 0.01, 0, 'XYZ'));
+                 targetQuaternion.multiplyQuaternions(deltaQuaternion, targetQuaternion);
+                 
+                 rotateLastHandPos.set(handCenter.x, handCenter.y);
+                 return;
+             }
+
+            if (pinch1.isPinching) {
+                if (interactionState === 'idle') {
+                    // This is the start of a pinch - try to select an object
+                    const w = window.innerWidth, h = window.innerHeight;
+                    const mouse = new THREE.Vector2();
+                    mouse.x = (pinch1.center.x / w) * 2 - 1;
+                    mouse.y = -(pinch1.center.y / h) * 2 + 1;
+
+                    const raycaster = new THREE.Raycaster();
+                    raycaster.setFromCamera(mouse, camera);
+                    const intersects = raycaster.intersectObjects(sceneObjects, true);
+
+                    if (intersects.length > 0) {
+                        let intersectedObject = intersects[0].object;
+                        // Traverse up to find the group/mesh parent that is in sceneObjects
+                        while(intersectedObject.parent && !sceneObjects.includes(intersectedObject)) {
+                             intersectedObject = intersectedObject.parent;
+                        }
+
+                        if(sceneObjects.includes(intersectedObject)) {
+                            selectObject(intersectedObject);
+                            interactionState = 'dragging'; // Lock in the dragging state
+                            dragInitialPinchPos.set(pinch1.center.x, pinch1.center.y);
+                            dragInitialObjectPos.copy(selectedObject.position);
+                        }
+                    }
+                } else if (interactionState === 'dragging' && selectedObject) { // Already dragging
+                    const currentPinchPos = new THREE.Vector2(pinch1.center.x, pinch1.center.y);
+                    const delta = currentPinchPos.clone().sub(dragInitialPinchPos);
+
+                    const cameraRight = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+                    const cameraUp = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+                    
+                    const distance = dragInitialObjectPos.distanceTo(camera.position);
+                    const fov = camera.fov * (Math.PI / 180);
+                    const screenHeight = window.innerHeight;
+                    const moveFactor = 2 * distance * Math.tan(fov / 2) / screenHeight;
+
+                    const moveVectorX = cameraRight.multiplyScalar(delta.x * moveFactor);
+                    const moveVectorY = cameraUp.multiplyScalar(-delta.y * moveFactor);
+
+                    targetPosition.copy(dragInitialObjectPos).add(moveVectorX).add(moveVectorY);
+                }
+                return;
+            }
+
+             interactionState = 'idle';
+         }
+         
+         function updateModeIndicator() {
+            modeIndicator.textContent = isCameraMode ? 'Orbit Mode' : 'Object Mode';
+            document.querySelector('[data-action="toggle-camera-mode"]').classList.toggle('active-mode', isCameraMode);
+         }
+         
+         function updateLockIcons() {
+            const isAnyLockActive = isSoftLocked || isHardLocked;
+            document.getElementById('fab-icon-locked').classList.toggle('hidden', !isAnyLockActive);
+            document.getElementById('fab-icon-unlocked').classList.toggle('hidden', isAnyLockActive);
+        }
+        
+        async function switchCamera() {
+            currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
+            setLoading(true, `Switching to ${currentFacingMode} camera...`);
+            await initCamera(currentFacingMode);
+            setLoading(false);
+        }
+
+         // --- UI Event Handlers and Actions ---
+         function handleFabAction(action) {
+             const mainFab = document.getElementById('main-fab');
+             switch(action) {
+                case 'toggle-shapes': shapePaletteModal.classList.toggle('visible'); break;
+                case 'delete-shape': deleteSelectedShape(); break;
+                case 'toggle-colors': colorPaletteModal.classList.toggle('visible'); break;
+                case 'toggle-textures': texturePaletteModal.classList.toggle('visible'); break;
+                case 'show-guide': guideModal.classList.toggle('visible'); break;
+                case 'toggle-camera-bg': toggleCameraBackground(); break;
+                case 'toggle-grid':
+                    if (gridHelper) {
+                        gridHelper.visible = !gridHelper.visible;
+                        document.querySelector('[data-action="toggle-grid"]').classList.toggle('active-mode', gridHelper.visible);
+                    }
+                    break;
+                case 'reset-scene': 
+                    while(sceneObjects.length > 0) deleteSelectedShape(); 
+                    cameraPivot.rotation.set(0,0,0);
+                    targetCameraPivotRotation.set(0,0,0);
+                    if (gridHelper) {
+                        gridHelper.visible = false;
+                        document.querySelector('[data-action="toggle-grid"]').classList.toggle('active-mode', false);
+                    }
+                    if(isHardLocked) {
+                        isHardLocked = false;
+                        mainFab.classList.remove('hard-locked');
+                    }
+                     if(isSoftLocked) {
+                        isSoftLocked = false;
+                        mainFab.classList.remove('soft-locked');
+                    }
+                    updateLockIcons();
+                    break;
+                case 'toggle-camera-mode':
+                    isCameraMode = !isCameraMode;
+                    updateModeIndicator();
+                    break;
+                case 'switch-camera':
+                    switchCamera();
+                    break;
+                case 'soft-lock-menu':
+                    isSoftLocked = !isSoftLocked;
+                    if (isSoftLocked) {
+                        isHardLocked = false;
+                        mainFab.classList.remove('hard-locked');
+                        mainFab.classList.add('soft-locked');
+                        subFabOverlay.classList.remove('visible');
+                    } else {
+                        mainFab.classList.remove('soft-locked');
+                    }
+                    updateLockIcons();
+                    break;
+                case 'hard-lock-all':
+                    isHardLocked = !isHardLocked;
+                    if(isHardLocked) {
+                        isSoftLocked = false;
+                        mainFab.classList.remove('soft-locked');
+                        mainFab.classList.add('hard-locked');
+                        subFabOverlay.classList.remove('visible');
+                    } else {
+                        mainFab.classList.remove('hard-locked');
+                    }
+                    updateLockIcons();
+                    break;
+                 case 'back-to-dashboard':
+                     // IMPORTANT: Change this URL to your actual student dashboard URL
+                     window.location.href = 'YOUR_DASHBOARD_URL_HERE.html';
+                     break;
+             }
+         }
+         
+         // --- Main execution starts here ---
+         window.onload = async () => {
+             loadingOverlay = document.getElementById('loading-overlay');
+             handOverlayCanvas = document.getElementById('hand-overlay');
+             handOverlayCtx = handOverlayCanvas.getContext('2d');
+             subFabOverlay = document.getElementById('sub-fab-overlay');
+             guideModal = document.getElementById('guide-modal');
+             colorPaletteModal = document.getElementById('color-palette-modal');
+             texturePaletteModal = document.getElementById('texture-palette-modal');
+             shapePaletteModal = document.getElementById('shape-palette-modal');
+             modeIndicator = document.getElementById('mode-indicator');
+             shapeLabelDisplay = document.getElementById('shape-label-display');
+             handOverlayCanvas.width = window.innerWidth;
+             handOverlayCanvas.height = window.innerHeight;
+             const mainFab = document.getElementById('main-fab');
+
+             initThreeScene();
+             updateModeIndicator();
+
+             mainFab.addEventListener('click', () => {
+                if (isHardLocked) {
+                    handleFabAction('hard-lock-all'); // This toggles it off
+                } else if (isSoftLocked) {
+                    handleFabAction('soft-lock-menu'); // This toggles it off
+                }
+                else {
+                    subFabOverlay.classList.toggle('visible');
+                }
+             });
+
+             document.querySelectorAll('.sub-fab').forEach(fab => {
+                 fab.addEventListener('click', () => {
+                     handleFabAction(fab.dataset.action);
+                     const nonClosingActions = ['toggle-camera-mode', 'toggle-camera-bg', 'toggle-grid', 'soft-lock-menu', 'hard-lock-all', 'switch-camera'];
+                     if(!nonClosingActions.includes(fab.dataset.action)) {
+                        subFabOverlay.classList.remove('visible');
+                     }
+                 });
+             });
+             
+             document.querySelectorAll('.swatch').forEach(swatch => {
+                swatch.addEventListener('click', () => {
+                    if (swatch.dataset.color) {
+                        applyColor(swatch.dataset.color);
+                        colorPaletteModal.classList.remove('visible');
+                    }
+                    if (swatch.dataset.texture) {
+                        applyTexture(swatch.dataset.texture);
+                        texturePaletteModal.classList.remove('visible');
+                    }
+                    if (swatch.dataset.shape) {
+                        addShape(swatch.dataset.shape);
+                        shapePaletteModal.classList.remove('visible');
+                    }
+                });
+             });
+             
+             shapePaletteModal.addEventListener('mouseover', (event) => {
+                const swatch = event.target.closest('.swatch');
+                if (swatch && swatch.dataset.name) {
+                    shapeLabelDisplay.textContent = swatch.dataset.name;
+                }
+             });
+
+             shapePaletteModal.addEventListener('mouseout', (event) => {
+                const swatch = event.target.closest('.swatch');
+                if (swatch) {
+                    if(!highlightedUIElement || !highlightedUIElement.classList.contains('gesture-highlight')) {
+                         shapeLabelDisplay.textContent = 'Hover or point to a shape';
+                    }
+                }
+             });
+             
+             await initCamera(currentFacingMode); 
+             await createHandLandmarker();
+                         
+             animate();
+         }
+     </script>
+ </body>
+ </html>
+
