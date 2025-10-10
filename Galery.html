@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select a 3D Model</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- 3D Model Viewer Script -->
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .model-card {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            border: 2px solid transparent;
+            background-color: #1f2937; /* bg-gray-800 */
+        }
+        .model-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 0 20px 5px rgba(59, 130, 246, 0.5);
+        }
+        .modal-backdrop {
+            background-color: rgba(0, 0, 0, 0.85);
+        }
+        model-viewer {
+            width: 100%;
+            height: 100%;
+            background-color: transparent;
+            --poster-color: transparent; /* Remove poster background */
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white flex flex-col items-center min-h-screen p-6">
+
+    <div class="text-center mb-10">
+        <h1 class="text-4xl md:text-5xl font-bold mb-2">AR Gesture Viewer</h1>
+        <p class="text-gray-400">Select a model to launch in AR.</p>
+    </div>
+
+    <!-- Grid for 3D Models -->
+    <div id="model-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 w-full max-w-6xl min-h-[150px]">
+        <!-- Model cards will be inserted here by JavaScript -->
+    </div>
+
+    <div class="mt-12 text-center">
+        <a href="User_Dash.html" class="text-gray-400 hover:text-white transition-colors duration-300 inline-flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M19 12H5"></path><polyline points="12 19 5 12 12 5"></polyline></svg>
+            Back to Dashboard
+        </a>
+    </div>
+
+    <!-- Fullscreen Modal Window -->
+    <div id="model-modal" class="fixed inset-0 modal-backdrop flex items-center justify-center hidden z-50 p-4">
+        <div id="modal-content" class="bg-gray-800 rounded-lg p-4 pt-12 w-full h-full max-w-6xl max-h-[90vh] relative transform transition-all scale-95 opacity-0 flex flex-col">
+            <button id="close-modal-btn" class="absolute top-3 right-4 text-gray-400 hover:text-white text-3xl font-bold leading-none z-20">&times;</button>
+            <div class="flex-grow w-full h-full rounded-md bg-gray-900/50 relative">
+                <div id="viewer-loading-overlay" class="absolute inset-0 flex items-center justify-center bg-gray-900/50 rounded-md z-10">
+                    <p class="text-white">Loading 3D Preview...</p>
+                </div>
+                <model-viewer id="model-viewer-preview"
+                              src=""
+                              alt="3D model preview"
+                              auto-rotate
+                              camera-controls
+                              crossorigin="anonymous"
+                              class="w-full h-full">
+                </model-viewer>
+            </div>
+             <div class="flex-shrink-0 mt-4 flex flex-col sm:flex-row items-center justify-between">
+                <h3 id="modal-title" class="font-semibold text-xl mb-3 sm:mb-0 text-center sm:text-left truncate"></h3>
+                <button id="modal-launch-btn" data-model-url="" data-model-name="" class="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg transition-colors duration-300 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="m21 7-4 4-4-4"></path><path d="M17 21v-7a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v7"></path><path d="M12 21H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h18a2 2 0 0 1 2 2v6"></path></svg>
+                    Launch in AR
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- DOM Elements ---
+            const modelGrid = document.getElementById('model-grid');
+            const modal = document.getElementById('model-modal');
+            const modalContent = document.getElementById('modal-content');
+            const closeModalBtn = document.getElementById('close-modal-btn');
+            const modalTitle = document.getElementById('modal-title');
+            const modalLaunchBtn = document.getElementById('modal-launch-btn');
+            const modelViewerPreview = document.getElementById('model-viewer-preview');
+            const viewerLoadingOverlay = document.getElementById('viewer-loading-overlay');
+
+            // --- UI Functions ---
+            const showLoading = () => {
+                modelGrid.innerHTML = '<p class="text-gray-400 col-span-full text-center">Loading models from repository...</p>';
+            };
+
+            const displayError = (message) => {
+                 modelGrid.innerHTML = `<p class="text-red-400 col-span-full text-center bg-gray-800 p-4 rounded-lg">Error: ${message}</p>`;
+            };
+
+            const populateGrid = (models) => {
+                modelGrid.innerHTML = ''; // Clear previous content
+                if (models.length === 0) {
+                    displayError("No models found in the manifest file.");
+                    return;
+                }
+                models.forEach(model => {
+                    const card = document.createElement('div');
+                    card.className = 'model-card rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer text-center';
+                    card.innerHTML = `
+                        <img src="${model.thumbnail}" onerror="this.src='https://placehold.co/600x400/1f2937/ffffff?text=${encodeURIComponent(model.name)}'" alt="${model.name}" class="w-full h-32 object-cover rounded-md mb-3 bg-gray-700">
+                        <h3 class="font-semibold text-md text-white truncate w-full">${model.name}</h3>
+                    `;
+                    card.addEventListener('click', () => openModal(model));
+                    modelGrid.appendChild(card);
+                });
+            };
+
+            // --- Modal Functions ---
+            const openModal = (model) => {
+                viewerLoadingOverlay.innerHTML = '<p class="text-white">Loading 3D Preview...</p>';
+                viewerLoadingOverlay.style.display = 'flex';
+                
+                modalTitle.textContent = model.name;
+                modalLaunchBtn.dataset.modelUrl = model.url;
+                modalLaunchBtn.dataset.modelName = model.name;
+                
+                modal.classList.remove('hidden');
+                setTimeout(() => {
+                    modalContent.classList.remove('scale-95', 'opacity-0');
+                }, 50);
+
+                modelViewerPreview.src = model.url;
+                modelViewerPreview.alt = `A 3D model of ${model.name}`;
+            };
+
+            const closeModal = () => {
+                 modalContent.classList.add('scale-95', 'opacity-0');
+                 setTimeout(() => {
+                    modal.classList.add('hidden');
+                    modelViewerPreview.src = '';
+                }, 200);
+            };
+
+            // --- Local Asset Loading Logic for GitHub Pages ---
+            const loadModelsFromManifest = async () => {
+                showLoading();
+                const manifestUrl = './Model_store/file-manifest.json';
+                const basePath = './Model_store/';
+
+                try {
+                    const response = await fetch(manifestUrl);
+                    if (!response.ok) {
+                        throw new Error(`Could not load manifest file (Status: ${response.status})`);
+                    }
+                    const data = await response.json();
+
+                    const models = data.models.map(item => {
+                        const thumbnailUrl = item.imageFile 
+                            ? `${basePath}${item.imageFile}` 
+                            : `https://placehold.co/600x400/1f2937/ffffff?text=${encodeURIComponent(item.name)}`;
+                        
+                        return {
+                            name: item.name,
+                            thumbnail: thumbnailUrl,
+                            url: `${basePath}${item.modelFile}`
+                        };
+                    });
+                    
+                    populateGrid(models);
+                } catch (error) {
+                    console.error("Error loading models from manifest:", error);
+                    displayError(error.message + ". Make sure 'Model_Store/file-manifest.json' exists and is formatted correctly.");
+                }
+            };
+            
+            // --- Initial Load ---
+            loadModelsFromManifest();
+
+            // --- Event Listeners ---
+            modelViewerPreview.addEventListener('load', () => {
+                viewerLoadingOverlay.style.display = 'none';
+            });
+            modelViewerPreview.addEventListener('error', (event) => {
+                viewerLoadingOverlay.innerHTML = `<p class="text-red-400 text-center">Failed to load preview.<br><span class="text-sm">${event.detail}</span></p>`;
+            });
+
+            modalLaunchBtn.addEventListener('click', () => {
+                const modelUrl = modalLaunchBtn.dataset.modelUrl;
+                const modelName = modalLaunchBtn.dataset.modelName;
+                if (modelUrl) {
+                    // This creates a full URL from the relative path, which is needed for the query parameter
+                    const absoluteModelUrl = new URL(modelUrl, window.location.href).href;
+                    const viewerUrl = `AR_Game.html?modelUrl=${encodeURIComponent(absoluteModelUrl)}&modelName=${encodeURIComponent(modelName)}`;
+                    window.location.href = viewerUrl;
+                }
+            });
+
+            closeModalBtn.addEventListener('click', closeModal);
+            modal.addEventListener('click', (event) => {
+                if (event.target === modal) closeModal();
+            });
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape' && !modal.classList.contains('hidden')) closeModal();
+            });
+        });
+    </script>
+
+</body>
+</html>
+
