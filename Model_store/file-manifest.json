@@ -1,0 +1,29 @@
+{
+"models": [
+{
+"name": "DG",
+"modelFile": "DG.glb",
+"imageFile": "DG.png"
+},
+{
+"name": "Robot Expressive",
+"modelFile": "RobotExpressive.glb",
+"imageFile": null
+},
+{
+"name": "Earth",
+"modelFile": "earth.glb",
+"imageFile": null
+},
+{
+"name": "Rigged Hand",
+"modelFile": "rigged_hand.glb",
+"imageFile": null
+},
+{
+"name": "Sun",
+"modelFile": "sun.glb",
+"imageFile": null
+}
+]
+}
