@@ -1012,8 +1012,8 @@
                     isHardLocked = !isHardLocked;
                     if (isHardLocked) {
                        if (isSoftLocked) {
-                           isSoftLocked = false;
-                           mainFab.classList.remove('soft-locked');
+                            isSoftLocked = false;
+                            mainFab.classList.remove('soft-locked');
                         }
                         mainFab.classList.add('hard-locked');
                         subFabOverlay.classList.remove('visible');
@@ -1102,36 +1102,17 @@
             await initCamera(currentFacingMode); 
             await createHandLandmarker();
             
-            // NEW LOGIC: Check for model data from selection.html
+            // NEW LOGIC: Check for model data passed from the selection page
             const urlParams = new URLSearchParams(window.location.search);
-            const source = urlParams.get('source');
             const modelUrl = urlParams.get('modelUrl');
             const modelName = urlParams.get('modelName');
 
-            if (source === 'session') {
-                const modelFile = urlParams.get('modelFile');
-                const fileMapString = sessionStorage.getItem('modelFiles');
-                if (modelFile && fileMapString) {
-                    const fileMap = JSON.parse(fileMapString);
-                    loadingManager.setURLModifier((url) => {
-                        const fileName = url.substring(url.lastIndexOf('/') + 1);
-                        return fileMap[fileName] || url;
-                    });
-                    const mainModelDataUrl = fileMap[decodeURIComponent(modelFile)];
-                    if (mainModelDataUrl) {
-                        loadModel({ name: decodeURIComponent(modelFile), file: mainModelDataUrl });
-                    } else {
-                        console.error("Main model file not found in session data. Loading default model.");
-                        loadModel({ name: 'RobotExpressive', file: 'https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb' });
-                    }
-                } else {
-                    console.error("Session data not found. Loading default model.");
-                    loadModel({ name: 'RobotExpressive', file: 'https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb' });
-                }
-            } else if (modelUrl) {
-                loadModel({ name: decodeURIComponent(modelName) || 'Uploaded Model', file: decodeURIComponent(modelUrl) });
+            // If a model URL is provided in the parameters, load it.
+            if (modelUrl) {
+                // Decode the URL and name, providing a default name if one isn't passed.
+                loadModel({ name: decodeURIComponent(modelName || 'Uploaded Model'), file: decodeURIComponent(modelUrl) });
             } else {
-                // Fallback to default model if no parameters are provided
+                // Otherwise, fall back to the default model.
                 loadModel({ name: 'RobotExpressive', file: 'https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb' });
             }
             
